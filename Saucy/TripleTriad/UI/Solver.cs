@@ -1349,6 +1349,8 @@ public class Solver
             if (deckOptimizer.IsAborted())
             {
                 PrintOptimizerChat("[Saucy] Deck optimizer aborted; using profile deck ranking.");
+                // Mark as timed-out so IsDeckSelectPrepBlocking unblocks — otherwise AcceptTriadMatch waits forever on a session key that will never resolve.
+                optimizerTimedOut = true;
                 return;
             }
 
@@ -1362,6 +1364,7 @@ public class Solver
             if (optimizedDeck == null || optimizedDeck.GetDeckState() != ETriadDeckState.Valid)
             {
                 PrintOptimizerChat("[Saucy] Deck optimizer produced no valid deck; using profile deck ranking.");
+                optimizerTimedOut = true;
                 return;
             }
 

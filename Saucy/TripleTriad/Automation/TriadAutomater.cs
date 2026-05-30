@@ -1,5 +1,7 @@
 using ECommons.Automation;
 using ECommons.Automation.UIInput;
+using ECommons.Throttlers;
+using ECommons.UIHelpers.AddonMasterImplementations;
 using FFXIVClientStructs.FFXIV.Client.UI;
 using FFXIVClientStructs.FFXIV.Client.UI.Agent;
 using FFXIVClientStructs.FFXIV.Component.GUI;
@@ -1980,11 +1982,7 @@ internal static unsafe class TriadAutomater
                 return;
             }
 
-            // Hold the Challenge click until the deck optimizer is done — otherwise we open deck select before the Saucy deck exists and fall back to the in-game Recommended button.
-            if (ShouldAutoManageDeck() && TTSolver.IsDeckSelectPrepBlocking(C.UseSimmedDeck))
-            {
-                return;
-            }
+            // Don't hold Challenge here — match invite has its own 30s expiration. Optimizer wait is done at the deck-select stage instead, which has no expiration.
 
             if (framesSinceMatchAcceptAttempt > 0)
             {
@@ -2035,10 +2033,15 @@ internal static unsafe class TriadAutomater
             return true;
         }
 
-        // Primary: fire the addon's close callback. Locale-agnostic, equivalent to clicking the X / Quit.
+        if (!EzThrottler.Throttle("TriadRequestQuit", 500))
+        {
+            return false;
+        }
+
+        // Primary: secondary-action callback (mirrors SelectYesno.No / Result.Quit at FireCallbackInt(1)).
         try
         {
-            addon->FireCallbackInt(-1);
+            addon->FireCallbackInt(1);
             addon->Update(0);
             if (!addon->IsVisible)
             {
@@ -2047,34 +2050,22 @@ internal static unsafe class TriadAutomater
         }
         catch (Exception ex)
         {
-            Svc.Log.Verbose(ex, "[TriadAutomater] Registration FireCallbackInt(-1) failed");
+            Svc.Log.Verbose(ex, "[TriadAutomater] Request FireCallbackInt(1) failed");
         }
 
-        // Fallback: try adjacent component IDs for Quit (Challenge button is id 41).
-        foreach (var buttonId in new uint[]
+        // Fallback: AddonMaster (component id 42 click).
+        try
         {
-            42, 43, 50
-        })
+            new AddonMaster.TripleTriadRequest(addon).Quit();
+            addon->Update(0);
+            if (!addon->IsVisible)
+            {
+                return true;
+            }
+        }
+        catch (Exception ex)
         {
-            var button = addon->GetComponentButtonById(buttonId);
-            if (button == null || button->AtkResNode == null || !button->AtkResNode->IsVisible() || !button->IsEnabled)
-            {
-                continue;
-            }
-
-            try
-            {
-                button->ClickAddonButton(addon);
-                addon->Update(0);
-                if (!addon->IsVisible)
-                {
-                    return true;
-                }
-            }
-            catch (Exception ex)
-            {
-                Svc.Log.Verbose(ex, "[TriadAutomater] Registration button {0} click failed", buttonId);
-            }
+            Svc.Log.Verbose(ex, "[TriadAutomater] AddonMaster Quit failed");
         }
 
         // Last resort: addon-level close.

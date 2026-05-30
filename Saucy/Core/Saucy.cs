@@ -265,6 +265,12 @@ public sealed class Saucy : IDalamudPlugin
                     {
                         TriadAutomater.NotifyPlayUntilAnyCardDropped();
                     }
+
+                    // RecordMatchResultIfNeeded dedups on the result addon ptr, so if TryRematch already recorded this match before the card-drop event fired, the session-end decision below would be skipped. Request the dismiss explicitly to bypass that race.
+                    if (!TriadAutomater.ShouldContinueTriadSession())
+                    {
+                        TriadAutomater.RequestSessionEndDismiss();
+                    }
                 }
                 else if (TriadAutomater.TryGetVerifiedNpcCardDrop(out var droppedCard, obj.cardItemId) &&
                          droppedCard != null)
