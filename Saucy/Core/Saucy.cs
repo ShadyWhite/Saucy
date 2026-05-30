@@ -203,6 +203,7 @@ public sealed class Saucy : IDalamudPlugin
                 }
 
                 uiReaderGamesResults.SetIsResultsUI(false);
+                CufModule.ClearCuffFlow();
                 C.Save();
             }
         }
@@ -313,6 +314,7 @@ public sealed class Saucy : IDalamudPlugin
     private static void DisableCuffModule()
     {
         C.EnableCuffModule = false;
+        CufModule.ClearCuffFlow();
         if (C.EnabledModules.Contains("CuffACurModule"))
         {
             C.EnabledModules.Remove("CuffACurModule");

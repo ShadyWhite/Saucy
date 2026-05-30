@@ -7,5 +7,9 @@ public class CuffACurModule : Module
 
     public override void Enable() => CufModule.ModuleEnabled = true;
 
-    public override void Disable() => CufModule.ModuleEnabled = false;
+    public override void Disable()
+    {
+        CufModule.ModuleEnabled = false;
+        CufModule.ClearCuffFlow();
+    }
 }
