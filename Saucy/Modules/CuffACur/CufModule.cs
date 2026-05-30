@@ -2,6 +2,7 @@ using Dalamud.Game.ClientState.Conditions;
 using Dalamud.Game.ClientState.Objects.Types;
 using Dalamud.Hooking;
 using ECommons;
+using ECommons.Logging;
 using ECommons.UIHelpers.AddonMasterImplementations;
 using FFXIVClientStructs.FFXIV.Client.Game.Control;
 using FFXIVClientStructs.FFXIV.Client.UI;
@@ -81,6 +82,8 @@ public unsafe class CufModule
                 var cuf = FindNearestCuffMachine();
                 if ((nint)cuf == nint.Zero)
                 {
+                    DuoLog.Warning("No Cuff-a-Cur machine nearby (maybe get closer if in front of one).");
+                    DisableModule();
                     return;
                 }
 
@@ -92,6 +95,19 @@ public unsafe class CufModule
         {
             Svc.Log.Error(ex, "[CufModule] RunModule failed");
         }
+    }
+
+    private static void DisableModule()
+    {
+        ModuleEnabled = false;
+        C.EnableCuffModule = false;
+        if (ModuleManager.GetModule<CuffACurModule>() is { } cuffModule &&
+            C.EnabledModules.Contains(cuffModule.InternalName))
+        {
+            C.EnabledModules.Remove(cuffModule.InternalName);
+        }
+
+        C.Save();
     }
 
     private static GameObject* FindNearestCuffMachine()
