@@ -95,7 +95,7 @@ public unsafe class MiniCactpot : Module
 
     private bool IsInCactpotFlow()
     {
-        if (TryGetLotteryAddon(out _))
+        if (TryGetLotteryAddon(out var _))
         {
             return true;
         }
@@ -116,7 +116,7 @@ public unsafe class MiniCactpot : Module
             return;
         }
 
-        if (!EzThrottler.Throttle("MiniCactpotTicketYes", 500))
+        if (!EzThrottler.Throttle("MiniCactpotTicketYes"))
         {
             return;
         }

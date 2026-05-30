@@ -29,11 +29,6 @@ public abstract partial class Module : IModule
     protected TaskManager TaskManager;
     protected TaskManagerConfiguration TaskManagerConfiguration;
 
-    protected virtual TaskManagerConfiguration CreateTaskManagerConfiguration() => new()
-    {
-        ShowDebug = false, TimeLimitMS = 5000, AbortOnTimeout = true
-    };
-
     public Module()
     {
         InternalName = GetType().Name;
@@ -75,6 +70,11 @@ public abstract partial class Module : IModule
     public virtual bool IsEnabled { get; protected set; }
     public virtual void Enable() { }
     public virtual void Disable() { }
+
+    protected virtual TaskManagerConfiguration CreateTaskManagerConfiguration() => new()
+    {
+        ShowDebug = false, TimeLimitMS = 5000, AbortOnTimeout = true
+    };
 }
 
 public abstract partial class Module
@@ -91,7 +91,6 @@ public abstract partial class Module
         {
             LogError($"Failed to enable module: {ex}");
             IsEnabled = false;
-            return;
         }
     }
 

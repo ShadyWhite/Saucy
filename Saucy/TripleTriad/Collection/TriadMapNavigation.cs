@@ -5,7 +5,6 @@ using ECommons.GameHelpers;
 using Lumina.Excel.Sheets;
 using Saucy.IPC;
 using System;
-using System.Globalization;
 using System.Numerics;
 using Map = Lumina.Excel.Sheets.Map;
 namespace Saucy.TripleTriad;
@@ -15,7 +14,6 @@ namespace Saucy.TripleTriad;
 /// </summary>
 internal static class TriadMapNavigation
 {
-    private static readonly bool NavigationDebug = false;
     private static readonly TimeSpan DefaultNavigationTimeout = TimeSpan.FromSeconds(90);
     private static readonly TimeSpan AethernetStartupTimeout = TimeSpan.FromSeconds(15);
     private static readonly TimeSpan AethernetSettleDelay = TimeSpan.FromSeconds(1.5);
@@ -109,7 +107,6 @@ internal static class TriadMapNavigation
                     return;
                 }
 
-                DebugLog(pending, "Aethernet complete, waiting for nav ready.");
                 pending.PendingAethernetShardId = 0;
                 pending.PendingAethernetShardName = null;
                 pending.Phase = NavigationPhase.WaitingForNavReady;
@@ -250,12 +247,11 @@ internal static class TriadMapNavigation
         if (travelPlan.HasAethernet)
         {
             Svc.Chat.Print(
-                $"[Saucy] Teleporting to {location.PlaceName}, then aethernet to {travelPlan.AethernetShardName}, then moving to {FormatMapCoordinates(location)}.");
+                $"[Saucy] Teleporting to {location.PlaceName}, then aethernet to {travelPlan.AethernetShardName}.");
         }
         else
         {
-            Svc.Chat.Print(
-                $"[Saucy] Teleporting to {location.PlaceName}, then moving to {FormatMapCoordinates(location)}.");
+            Svc.Chat.Print($"[Saucy] Teleporting to {location.PlaceName}.");
         }
 
         return true;
@@ -310,9 +306,7 @@ internal static class TriadMapNavigation
         pending.Destination = ResolvePostRouteDestination(pending);
         pending.Phase = NavigationPhase.WaitingForNavReady;
         pending.PhaseStartedUtc = DateTime.UtcNow;
-        Svc.Chat.Print(
-            $"[Saucy] Arrived in {pending.Location.PlaceName}. Moving to {FormatDestination(pending.Destination)}...");
-        DebugLog(pending, $"Post-route destination: {FormatDestination(pending.Destination)}");
+        Svc.Chat.Print($"[Saucy] Arrived in {pending.Location.PlaceName}. Moving to NPC...");
     }
 
     private static bool TryStartAethernetTravel(
@@ -342,8 +336,7 @@ internal static class TriadMapNavigation
             targetTerritoryId,
             startingPhase: NavigationPhase.WaitingForAethernet,
             activeAethernetShardId: travelPlan.AethernetShardId);
-        Svc.Chat.Print(
-            $"[Saucy] Taking aethernet to {travelPlan.AethernetShardName}, then moving to {FormatMapCoordinates(location)}.");
+        Svc.Chat.Print($"[Saucy] Taking aethernet to {travelPlan.AethernetShardName}.");
         return true;
     }
 
@@ -381,7 +374,6 @@ internal static class TriadMapNavigation
         pending.AethernetShardPosition = AetheryteHelper.GetAethernetShardWorldPosition(shardId);
         pending.AethernetSeenBusy = false;
         pending.AethernetBusyClearedUtc = null;
-        DebugLog(pending, $"Waiting for aethernet shard {shardId}.");
     }
 
     private static void BeginPending(
@@ -455,58 +447,42 @@ internal static class TriadMapNavigation
             ReferenceEquals(_pending, pending) &&
             pending.Phase != NavigationPhase.WaitingForNavReady)
         {
-            DebugLog(pending, "Blocked vnav start while travel still active.");
             return false;
         }
 
         if (Lifestream.IsBusyNow() || Vnavmesh.IsMoving())
         {
-            DebugLog(pending, "Blocked vnav start while Lifestream or vnav is busy.");
             return false;
         }
 
         var indoor = pending.ArrivedViaMultiAreaRoute || IsIndoorTerritory(Svc.ClientState.TerritoryType);
-        var pointOnFloor = Vnavmesh.TryGetPointOnFloor(pending.Destination, indoor)
+        var pointOnFloor = Vnavmesh.TryGetPointOnFloor(pending.Destination, allowUnlandable: indoor)
                            ?? pending.Destination;
 
-        if (AttemptPathfind(pending, pointOnFloor, pending.Fly))
+        if (AttemptPathfind(pointOnFloor, pending.Fly))
         {
-            PrintVnavStarted(pending, pointOnFloor);
+            Svc.Chat.Print($"[Saucy] Moving to {pending.Location.PlaceName}.");
             return true;
         }
 
-        if (pending.Fly && AttemptPathfind(pending, pointOnFloor, false))
+        if (pending.Fly && AttemptPathfind(pointOnFloor, false))
         {
             pending.Fly = false;
-            PrintVnavStarted(pending, pointOnFloor);
+            Svc.Chat.Print($"[Saucy] Moving to {pending.Location.PlaceName}.");
             return true;
         }
 
         return false;
     }
 
-    private static bool AttemptPathfind(PendingNavigation pending, Vector3 pointOnFloor, bool fly)
+    private static bool AttemptPathfind(Vector3 pointOnFloor, bool fly)
     {
         if (!Vnavmesh.TryPathfindAndMoveTo(pointOnFloor, fly))
         {
-            DebugLog(pending, $"vnav rejected path (fly={fly}) toward {FormatDestination(pointOnFloor)}");
             return false;
         }
 
-        if (!Vnavmesh.IsMoving())
-        {
-            DebugLog(pending, $"vnav accepted path but did not start moving (fly={fly})");
-            return false;
-        }
-
-        return true;
-    }
-
-    private static void PrintVnavStarted(PendingNavigation pending, Vector3 pointOnFloor)
-    {
-        Svc.Chat.Print(
-            $"[Saucy] Moving to {pending.Location.PlaceName} {FormatDestination(pending.Destination)}.");
-        DebugLog(pending, $"vnav started toward {FormatDestination(pointOnFloor)}");
+        return Vnavmesh.IsMoving();
     }
 
     private static bool IsLifestreamTravelComplete(PendingNavigation pending)
@@ -542,7 +518,6 @@ internal static class TriadMapNavigation
         {
             pending.AethernetSeenBusy = true;
             pending.AethernetBusyClearedUtc = null;
-            DebugLog(pending, "Aethernet still active (Lifestream or vnav busy).");
             return false;
         }
 
@@ -554,14 +529,12 @@ internal static class TriadMapNavigation
                 return true;
             }
 
-            DebugLog(pending, "Waiting for Lifestream aethernet task to start.");
             return false;
         }
 
         if (pending.AethernetBusyClearedUtc == null)
         {
             pending.AethernetBusyClearedUtc = DateTime.UtcNow;
-            DebugLog(pending, "Lifestream idle; waiting for aethernet settle.");
             return false;
         }
 
@@ -581,8 +554,6 @@ internal static class TriadMapNavigation
             var distToShard = Vector3.Distance(Player.Position, pending.AethernetShardPosition.Value);
             if (movedFromStart < AethernetMinMoveDistance && distToShard > AethernetNearShardDistance)
             {
-                DebugLog(pending,
-                    $"Still at aethernet start (moved {movedFromStart:F1}y, shard {distToShard:F1}y away).");
                 return false;
             }
         }
@@ -594,7 +565,6 @@ internal static class TriadMapNavigation
     {
         if (Vnavmesh.IsMoving())
         {
-            DebugLog(_pending, "Stopping vnav during Lifestream travel.");
             StopVnavIfRunning();
         }
     }
@@ -609,45 +579,7 @@ internal static class TriadMapNavigation
         Vnavmesh.StopPath();
     }
 
-    private static void DebugLog(PendingNavigation? pending, string message)
-    {
-        if (!NavigationDebug)
-        {
-            return;
-        }
-
-        var phase = pending?.Phase.ToString() ?? "none";
-        Svc.Chat.Print($"[Saucy nav] {phase}: {message}");
-    }
-
-    private static bool IsBetweenAreas() => Svc.Condition[ConditionFlag.BetweenAreas];
-
-    private static void EnsureFrameworkSubscription()
-    {
-        if (_frameworkSubscribed)
-        {
-            return;
-        }
-
-        Svc.Framework.Update += OnFrameworkUpdate;
-        _frameworkSubscribed = true;
-    }
-
-    private static void OnFrameworkUpdate(IFramework _)
-    {
-        Tick();
-
-        if (_pending == null && _frameworkSubscribed)
-        {
-            Svc.Framework.Update -= OnFrameworkUpdate;
-            _frameworkSubscribed = false;
-        }
-    }
-
     private static void ClearPending() => _pending = null;
-
-    private static string FormatMapCoordinates(MapLinkPayload location) =>
-        $"({location.XCoord.ToString("0.0", CultureInfo.InvariantCulture)}, {location.YCoord.ToString("0.0", CultureInfo.InvariantCulture)})";
 
     internal static Vector3? ResolveDestination(MapLinkPayload location, TriadNpc? npc = null)
     {
@@ -792,8 +724,29 @@ internal static class TriadMapNavigation
         return aListed && bListed;
     }
 
-    private static string FormatDestination(Vector3 destination) =>
-        $"({destination.X.ToString("F1", CultureInfo.InvariantCulture)}, {destination.Y.ToString("F1", CultureInfo.InvariantCulture)}, {destination.Z.ToString("F1", CultureInfo.InvariantCulture)})";
+    private static bool IsBetweenAreas() => Svc.Condition[ConditionFlag.BetweenAreas];
+
+    private static void EnsureFrameworkSubscription()
+    {
+        if (_frameworkSubscribed)
+        {
+            return;
+        }
+
+        Svc.Framework.Update += OnFrameworkUpdate;
+        _frameworkSubscribed = true;
+    }
+
+    private static void OnFrameworkUpdate(IFramework _)
+    {
+        Tick();
+
+        if (_pending == null && _frameworkSubscribed)
+        {
+            Svc.Framework.Update -= OnFrameworkUpdate;
+            _frameworkSubscribed = false;
+        }
+    }
 
     /// <summary>From Henchman GeneralHelpers.MapToWorld.</summary>
     private static Vector2 MapToWorld(Vector2 mapCoordinates, Map map) =>

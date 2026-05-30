@@ -296,7 +296,10 @@ internal static unsafe class TriadAutomater
     /// <summary>True while any tracked NPC reward card is below the per-card target count.</summary>
     public static bool IsCardFarmModeActive() => ModuleEnabled && PlayUntilAllCardsDropOnce;
 
-    /// <summary>True only when the user opted into auto-pick. Farm mode no longer forces deck-building — the manually selected deck is used as-is.</summary>
+    /// <summary>
+    ///     True only when the user opted into auto-pick. Farm mode no longer forces deck-building — the manually selected
+    ///     deck is used as-is.
+    /// </summary>
     public static bool ShouldAutoManageDeck() => C.UseSimmedDeck;
 
     /// <summary>True only when every tracked card has been obtained at least once this session.</summary>
@@ -2033,7 +2036,7 @@ internal static unsafe class TriadAutomater
             return true;
         }
 
-        if (!EzThrottler.Throttle("TriadRequestQuit", 500))
+        if (!EzThrottler.Throttle("TriadRequestQuit"))
         {
             return false;
         }

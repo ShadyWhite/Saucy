@@ -13,6 +13,7 @@ using FFXIVClientStructs.FFXIV.Client.Game.Object;
 using FFXIVClientStructs.FFXIV.Client.UI;
 using FFXIVClientStructs.FFXIV.Component.GUI;
 using Lumina.Excel.Sheets;
+using Saucy.Framework;
 using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -31,16 +32,12 @@ public unsafe class LimbManager
 
     private static readonly Dictionary<LimbDifficulty, int> Heights = new()
     {
-        [LimbDifficulty.Titan] = 20,
-        [LimbDifficulty.Morbol] = 40,
-        [LimbDifficulty.Cactuar] = 340
+        [LimbDifficulty.Titan] = 20, [LimbDifficulty.Morbol] = 40, [LimbDifficulty.Cactuar] = 340
     };
 
     private static readonly Dictionary<LimbDifficulty, uint> NodeIDs = new()
     {
-        [LimbDifficulty.Titan] = 41,
-        [LimbDifficulty.Morbol] = 44,
-        [LimbDifficulty.Cactuar] = 47
+        [LimbDifficulty.Titan] = 41, [LimbDifficulty.Morbol] = 44, [LimbDifficulty.Cactuar] = 47
     };
 
     private readonly List<HitResult> Results = [];
@@ -66,7 +63,7 @@ public unsafe class LimbManager
 
     private void ToggleModule()
     {
-        if (ModuleManager.GetModule<OutOnALimbModule>() is { } limbModule)
+        if (Saucy.ModuleManager.GetModule<OutOnALimbModule>() is { } limbModule)
         {
             if (Cfg.EnableLimb && !C.EnabledModules.Contains(limbModule.InternalName))
             {
@@ -367,7 +364,7 @@ public unsafe class LimbManager
                     {
                         if (EzThrottler.Throttle("Yesno", 2000))
                         {
-                            Framework.SelectYesnoHelper.PressNo(ss);
+                            SelectYesnoHelper.PressNo(ss);
                         }
                     }
                     else
@@ -378,14 +375,14 @@ public unsafe class LimbManager
                             {
                                 if (EzThrottler.Throttle("Yesno", 2000))
                                 {
-                                    Framework.SelectYesnoHelper.PressYes(ss);
+                                    SelectYesnoHelper.PressYes(ss);
                                 }
                             }
                             else
                             {
                                 if (EzThrottler.Throttle("Yesno", 2000))
                                 {
-                                    Framework.SelectYesnoHelper.PressNo(ss);
+                                    SelectYesnoHelper.PressNo(ss);
                                 }
                             }
                         }
@@ -395,14 +392,14 @@ public unsafe class LimbManager
                             {
                                 if (EzThrottler.Throttle("Yesno", 2000))
                                 {
-                                    Framework.SelectYesnoHelper.PressYes(ss);
+                                    SelectYesnoHelper.PressYes(ss);
                                 }
                             }
                             else
                             {
                                 if (EzThrottler.Throttle("Yesno", 2000))
                                 {
-                                    Framework.SelectYesnoHelper.PressNo(ss);
+                                    SelectYesnoHelper.PressNo(ss);
                                 }
                             }
                         }

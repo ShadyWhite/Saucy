@@ -28,7 +28,7 @@ public class UIReaderScheduler(IGameGui gameGui)
     {
         if (gameGui != null)
         {
-            // slow check: look for newly created addons - would be nice to change to event driven
+            // slow check: look for newly created addons
             slowCheckRemaining -= deltaSeconds;
             if (slowCheckRemaining <= 0.0f)
             {

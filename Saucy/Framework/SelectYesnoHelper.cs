@@ -10,11 +10,11 @@ public static unsafe class SelectYesnoHelper
 {
     private static DateTime? armedUntilUtc;
 
+    public static bool IsArmed => armedUntilUtc != null && DateTime.UtcNow < armedUntilUtc;
+
     public static void ArmForYes(TimeSpan window) => armedUntilUtc = DateTime.UtcNow + window;
 
     public static void Disarm() => armedUntilUtc = null;
-
-    public static bool IsArmed => armedUntilUtc != null && DateTime.UtcNow < armedUntilUtc;
 
     public static bool TryGetVisible(out AddonSelectYesno* yesno)
     {
@@ -100,7 +100,7 @@ public static unsafe class SelectYesnoHelper
 
         try
         {
-            fallback(new AddonMaster.SelectYesno(yesno));
+            fallback(new(yesno));
             return true;
         }
         catch (Exception ex)

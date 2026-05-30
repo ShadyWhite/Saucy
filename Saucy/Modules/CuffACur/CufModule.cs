@@ -2,7 +2,6 @@ using Dalamud.Game.ClientState.Conditions;
 using Dalamud.Game.ClientState.Objects.Types;
 using Dalamud.Hooking;
 using ECommons;
-using ECommons.Logging;
 using ECommons.UIHelpers.AddonMasterImplementations;
 using FFXIVClientStructs.FFXIV.Client.Game.Control;
 using FFXIVClientStructs.FFXIV.Client.UI;
@@ -17,7 +16,7 @@ namespace Saucy.CuffACur;
 public unsafe class CufModule
 {
     public delegate nint UnknownFunction(nint a1, ushort a2, int a3, void* a4);
-    public static bool ModuleEnabled = false;
+    public static bool ModuleEnabled;
     public static Hook<UnknownFunction>? FuncHook;
 
     public static nint FuncDetour(nint a1, ushort a2, int a3, void* a4) => FuncHook!.Original(a1, a2, a3, a4);

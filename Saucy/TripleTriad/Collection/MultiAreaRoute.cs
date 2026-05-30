@@ -310,7 +310,7 @@ internal static unsafe class MultiAreaRouteExecutor
             return false;
         }
 
-        // Settle window so vnav doesn't fire before the aethernet animation fully releases the player.
+        // Brief settle after aethernet before the next step.
         return DateTime.UtcNow - execution.StepStartedUtc > TimeSpan.FromSeconds(2);
     }
 
@@ -338,7 +338,6 @@ internal static unsafe class MultiAreaRouteExecutor
 
         if (!SelectYesnoHelper.PressYes(yesno))
         {
-            Svc.Log.Verbose("[SaucyRoute] SelectYesno Yes press failed");
             return false;
         }
 

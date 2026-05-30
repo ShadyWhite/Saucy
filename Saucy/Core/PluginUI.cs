@@ -780,7 +780,7 @@ public unsafe class PluginUI : Window
             TriadAutomater.NumberOfTimes = 1;
             if (TriadAutomater.ModuleEnabled)
             {
-                TriadAutomater.ActivateCardFarmSession(CurrentNPC, resetProgress: true);
+                TriadAutomater.ActivateCardFarmSession(CurrentNPC, true);
             }
             else
             {

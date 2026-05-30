@@ -4,7 +4,6 @@ using ECommons;
 using ECommons.Configuration;
 using ECommons.SimpleGui;
 using ECommons.UIHelpers.AddonMasterImplementations;
-using FFXIVClientStructs.FFXIV.Client.UI;
 using FFXIVClientStructs.FFXIV.Component.GUI;
 using NAudio.Wave;
 using PunishLib;
@@ -518,7 +517,7 @@ public sealed class Saucy : IDalamudPlugin
     {
         try
         {
-            if (!SelectYesnoHelper.TryGetVisible(out _))
+            if (!SelectYesnoHelper.TryGetVisible(out var _))
             {
                 return;
             }
