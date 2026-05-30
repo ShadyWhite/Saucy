@@ -15,7 +15,6 @@ public unsafe class MiniCactpot : Module
 {
     private const int ClickThrottleMs = 600;
     private const uint ConfirmButtonNodeId = 67;
-    private const int ConfirmCallbackParam = 18;
 
     private const string TalkThrottleKey = "Saucy.MiniCactpot.Talk";
 
@@ -27,6 +26,13 @@ public unsafe class MiniCactpot : Module
 
     public override void Enable()
     {
+        // Defensively unregister first — guards the "had to disable+enable" cold-start case where a previous registration was orphaned.
+        Svc.AddonLifecycle.UnregisterListener(OnLotterySetup);
+        Svc.AddonLifecycle.UnregisterListener(OnPreFinalize);
+        Svc.AddonLifecycle.UnregisterListener(OnSelectYesnoSetup);
+        Svc.AddonLifecycle.UnregisterListener(OnTalkUpdate);
+        Svc.Framework.Update -= OnFrameworkUpdate;
+
         Svc.AddonLifecycle.RegisterListener(AddonEvent.PostSetup, "LotteryDaily", OnLotterySetup);
         Svc.AddonLifecycle.RegisterListener(AddonEvent.PreFinalize, "LotteryDaily", OnPreFinalize);
         Svc.AddonLifecycle.RegisterListener(AddonEvent.PostSetup, "SelectYesno", OnSelectYesnoSetup);
@@ -47,8 +53,9 @@ public unsafe class MiniCactpot : Module
     private void OnLotterySetup(AddonEvent type, AddonArgs args) =>
         MarkCactpotFlow(TimeSpan.FromMinutes(2));
 
+    // Longer post-game window so Talk dialogue + the next ticket-prompt Yes/No are both still advanced by Saucy.
     private void OnPreFinalize(AddonEvent type, AddonArgs args) =>
-        MarkCactpotFlow(TimeSpan.FromSeconds(20));
+        MarkCactpotFlow(TimeSpan.FromSeconds(90));
 
     private void OnTalkUpdate(AddonEvent type, AddonArgs args) => TryAdvanceDialogue();
 
@@ -358,12 +365,6 @@ public unsafe class MiniCactpot : Module
         }
 
         var unit = (AtkUnitBase*)addon;
-
-        if (TryFireConfirmCallback(unit))
-        {
-            return true;
-        }
-
         var confirmBtn = addon->GetComponentButtonById(ConfirmButtonNodeId);
         if (confirmBtn == null || confirmBtn->AtkResNode == null || !confirmBtn->AtkResNode->IsVisible())
         {
@@ -384,21 +385,6 @@ public unsafe class MiniCactpot : Module
         catch (Exception ex)
         {
             Svc.Log.Verbose(ex, "[MiniCactpot] Confirm button click failed");
-            return false;
-        }
-    }
-
-    private static bool TryFireConfirmCallback(AtkUnitBase* unit)
-    {
-        try
-        {
-            unit->FireCallbackInt(ConfirmCallbackParam);
-            unit->Update(0);
-            return true;
-        }
-        catch (Exception ex)
-        {
-            Svc.Log.Verbose(ex, "[MiniCactpot] Confirm callback failed");
             return false;
         }
     }

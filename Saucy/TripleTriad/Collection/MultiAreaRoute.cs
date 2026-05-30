@@ -7,7 +7,6 @@ using ECommons.Throttlers;
 using FFXIVClientStructs.FFXIV.Client.Game;
 using FFXIVClientStructs.FFXIV.Client.Game.Control;
 using FFXIVClientStructs.FFXIV.Client.Game.Object;
-using FFXIVClientStructs.FFXIV.Component.GUI;
 using Saucy.Framework;
 using Saucy.IPC;
 using System;
@@ -38,6 +37,9 @@ internal sealed class MultiAreaRouteStep
     public bool Fly { get; init; }
     public uint ObjectDataId { get; init; }
     public uint ArrivalObjectDataId { get; init; }
+    public uint ApproachMapId { get; init; }
+    public float ApproachMapX { get; init; }
+    public float ApproachMapY { get; init; }
     public float Range { get; init; } = 6f;
     public bool DismountFirst { get; init; }
 }
@@ -49,6 +51,9 @@ internal sealed class MultiAreaRoute
     public required Func<MapLinkPayload, bool> Matches { get; init; }
     public required IReadOnlyList<MultiAreaRouteStep> Steps { get; init; }
     public IReadOnlyList<uint>? ArrivalTerritoryIds { get; init; }
+    public uint InteriorMapId { get; init; }
+    public float InteriorMapX { get; init; }
+    public float InteriorMapY { get; init; }
     public TimeSpan Timeout { get; init; } = TimeSpan.FromSeconds(180);
 
     public bool IsInDestinationTerritory(uint territoryId, uint fallbackTargetTerritoryId)
@@ -366,7 +371,8 @@ internal static unsafe class MultiAreaRouteExecutor
                 return false;
             }
 
-            var approachPoint = Vnavmesh.TryGetPointOnFloor(step.Position) ?? step.Position;
+            var approachPoint = ResolveApproachPoint(step);
+            approachPoint = Vnavmesh.TryGetPointOnFloor(approachPoint) ?? approachPoint;
             if (!Vnavmesh.TryPathfindAndMoveTo(approachPoint, step.Fly))
             {
                 Svc.Chat.PrintError("[Saucy] vnavmesh could not start movement for this route step.");
@@ -388,9 +394,47 @@ internal static unsafe class MultiAreaRouteExecutor
             return false;
         }
 
-        var pointOnFloor = Vnavmesh.TryGetPointOnFloor(step.Position) ?? step.Position;
-        return Vector3.Distance(Player.Position, pointOnFloor) <= 8f ||
-               (step.ArrivalObjectDataId != 0 && FindObject(step.ArrivalObjectDataId) != null);
+        var resolvedPoint = ResolveApproachPoint(step);
+        var pointOnFloor = Vnavmesh.TryGetPointOnFloor(resolvedPoint) ?? resolvedPoint;
+        return IsMoveToComplete(step, pointOnFloor);
+    }
+
+    private static Vector3 ResolveApproachPoint(MultiAreaRouteStep step)
+    {
+        if (step.ArrivalObjectDataId != 0)
+        {
+            var target = FindObject(step.ArrivalObjectDataId);
+            if (target != null)
+            {
+                return target.Position;
+            }
+        }
+
+        if (step.ApproachMapId != 0)
+        {
+            var fromMap = TriadMapNavigation.GetWorldPositionFromMap(
+                step.ApproachMapId, step.ApproachMapX, step.ApproachMapY);
+            if (fromMap != null)
+            {
+                return fromMap.Value;
+            }
+        }
+
+        return step.Position;
+    }
+
+    private static bool IsMoveToComplete(MultiAreaRouteStep step, Vector3 approachPoint)
+    {
+        if (step.ArrivalObjectDataId != 0)
+        {
+            var target = FindObject(step.ArrivalObjectDataId);
+            if (target != null && Vector3.Distance(Player.Position, target.Position) <= step.Range)
+            {
+                return true;
+            }
+        }
+
+        return Vector3.Distance(Player.Position, approachPoint) <= 8f;
     }
 
     private static bool TickInteract(MultiAreaRouteStep step)
@@ -544,14 +588,22 @@ internal static class FortempsManservantRoute
     private const uint LastVigilAethernetShardId = 87;
     private const uint GatekeeperNpcDataId = 1011217;
     private const uint FortempsManorTerritoryId = 433;
-    private static readonly Vector3 GatekeeperApproachPoint = new(16.014f, 16.010f, -11.590f);
+    private const uint PillarsMapId = 219;
+    private const uint ManorInteriorMapId = 222;
+    private const float GuardMapX = 11.5f;
+    private const float GuardMapY = 11.0f;
+    private const float ManservantMapX = 6f;
+    private const float ManservantMapY = 6f;
     private static readonly uint[] FortempsManorTerritoryIds = [FortempsManorTerritoryId];
 
     internal static readonly MultiAreaRoute Route = new()
     {
         Name = "Fortemps Manor",
-        TooltipHint = "Foundation aetheryte, aethernet to The Last Vigil, mount, then enter the manor.",
+        TooltipHint = "Foundation aetheryte, aethernet to The Last Vigil, then enter the manor.",
         ArrivalTerritoryIds = FortempsManorTerritoryIds,
+        InteriorMapId = ManorInteriorMapId,
+        InteriorMapX = ManservantMapX,
+        InteriorMapY = ManservantMapY,
         Matches = location =>
         {
             if (location.TerritoryType.RowId == FortempsManorTerritoryId)
@@ -575,11 +627,13 @@ internal static class FortempsManservantRoute
             },
             new()
             {
-                Kind = MultiAreaRouteStepKind.Mount
-            },
-            new()
-            {
-                Kind = MultiAreaRouteStepKind.MoveTo, Position = GatekeeperApproachPoint, Fly = true, ArrivalObjectDataId = GatekeeperNpcDataId
+                Kind = MultiAreaRouteStepKind.MoveTo,
+                ApproachMapId = PillarsMapId,
+                ApproachMapX = GuardMapX,
+                ApproachMapY = GuardMapY,
+                Fly = false,
+                ArrivalObjectDataId = GatekeeperNpcDataId,
+                Range = 6f
             },
             new()
             {

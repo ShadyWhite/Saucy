@@ -1,5 +1,6 @@
 ﻿using FFXIVClientStructs.FFXIV.Client.UI;
 using FFXIVClientStructs.FFXIV.Client.UI.Agent;
+using FFXIVClientStructs.FFXIV.Component.GUI;
 using System;
 using System.Numerics;
 namespace Saucy.TripleTriad.UI;
@@ -17,7 +18,7 @@ internal static class CardListFilterMapping
             DisplayOwnedCards or 1 => (byte)GameCardCollectionFilter.OnlyOwned,
             DisplayUnownedCards or 2 => (byte)GameCardCollectionFilter.OnlyMissing,
             DisplayAllCards or 0 => (byte)GameCardCollectionFilter.All,
-            _ => (byte)GameCardCollectionFilter.All
+            var _ => (byte)GameCardCollectionFilter.All
         };
 }
 
@@ -32,15 +33,15 @@ public unsafe class UIReaderTriadCardList : IUIReader
     }
 
     private nint cachedAddonAgentPtr;
-    private int pendingNavPage = -1;
-    private int pendingNavCell = -1;
-    private int pendingNavCardId;
-    private int pendingNavAttempts;
-    private int lastNotifiedCardId = -1;
 
     public UIStateTriadCardList cachedState = new();
+    private int lastNotifiedCardId = -1;
     public Action<UIStateTriadCardList>? OnUIStateChanged;
     public Action<bool>? OnVisibilityChanged;
+    private int pendingNavAttempts;
+    private int pendingNavCardId;
+    private int pendingNavCell = -1;
+    private int pendingNavPage = -1;
 
     public Status status = Status.AddonNotFound;
     public bool IsVisible => status is not Status.AddonNotFound and not Status.AddonNotVisible;
@@ -55,7 +56,7 @@ public unsafe class UIReaderTriadCardList : IUIReader
         SetStatus(Status.AddonNotFound);
     }
 
-    public unsafe void OnAddonShown(nint addonPtr)
+    public void OnAddonShown(nint addonPtr)
     {
         cachedAddonAgentPtr = (addonPtr != nint.Zero) ? Svc.GameGui.FindAgentInterface(addonPtr) : nint.Zero;
 
@@ -80,7 +81,7 @@ public unsafe class UIReaderTriadCardList : IUIReader
         }
     }
 
-    public unsafe void OnAddonUpdate(nint addonPtr)
+    public void OnAddonUpdate(nint addonPtr)
     {
         var addon = (AddonGSInfoCardList*)addonPtr;
         (cachedState.screenPos, cachedState.screenSize) = GUINodeUtils.GetNodePosAndSize(addon->AtkUnitBase.RootNode);
@@ -160,7 +161,7 @@ public unsafe class UIReaderTriadCardList : IUIReader
         cachedState.filterMode = newFilterMode;
         cachedState.selectedCardId = selectedCardId;
 
-        var resolvedId = cachedState.ResolveCardId(new GameUIParser());
+        var resolvedId = cachedState.ResolveCardId(new());
         if (selectionChanged || resolvedId != lastNotifiedCardId)
         {
             lastNotifiedCardId = resolvedId;
@@ -188,7 +189,7 @@ public unsafe class UIReaderTriadCardList : IUIReader
             var pendingCard = TriadCardDB.Get().FindById(pendingNavCardId);
             if (pendingCard != null)
             {
-                var resolved = cachedState.ToTriadCard(new GameUIParser());
+                var resolved = cachedState.ToTriadCard(new());
                 if (resolved == null || resolved.Id != pendingNavCardId)
                 {
                     return pendingCard;
@@ -214,10 +215,10 @@ public unsafe class UIReaderTriadCardList : IUIReader
             }
         }
 
-        return cachedState.ToTriadCard(new GameUIParser());
+        return cachedState.ToTriadCard(new());
     }
 
-    private static unsafe int TryReadSelectedCardId(AddonGSInfoCardList* addon)
+    private static int TryReadSelectedCardId(AddonGSInfoCardList* addon)
     {
         if (addon->SelectedCardName != null)
         {
@@ -274,7 +275,7 @@ public unsafe class UIReaderTriadCardList : IUIReader
         return -1;
     }
 
-    private static int TryParseCardIdFromText(FFXIVClientStructs.FFXIV.Component.GUI.AtkResNode* node) =>
+    private static int TryParseCardIdFromText(AtkResNode* node) =>
         TryParseCardIdFromText(GUINodeUtils.GetNodeText(node));
 
     private static int TryParseCardIdFromText(string? text)
@@ -298,7 +299,7 @@ public unsafe class UIReaderTriadCardList : IUIReader
     private static bool IsKnownCardId(int cardId) =>
         TriadCardDB.Get().FindById(cardId) != null || GameCardDB.Get().FindById(cardId) != null;
 
-    public unsafe bool SetPageAndGridView(int pageIndex, int cellIndex, int cardId = 0)
+    public bool SetPageAndGridView(int pageIndex, int cellIndex, int cardId = 0)
     {
         if (pageIndex < 0 || pageIndex >= GameCardDB.MaxGridPages || cellIndex < 0 || cellIndex >= GameCardDB.MaxGridCells)
         {
@@ -335,7 +336,7 @@ public unsafe class UIReaderTriadCardList : IUIReader
         pendingNavAttempts = 0;
     }
 
-    private unsafe void TickPendingCardNavigation(nint addonPtr)
+    private void TickPendingCardNavigation(nint addonPtr)
     {
         if (pendingNavPage < 0 || addonPtr == nint.Zero)
         {
@@ -375,7 +376,7 @@ public unsafe class UIReaderTriadCardList : IUIReader
         }
     }
 
-    private unsafe bool IsPendingNavigationComplete(AddonGSInfoCardList* addon)
+    private bool IsPendingNavigationComplete(AddonGSInfoCardList* addon)
     {
         if (addon->SelectedPage != pendingNavPage || addon->SelectedCardIndex != pendingNavCell)
         {
@@ -400,7 +401,7 @@ public unsafe class UIReaderTriadCardList : IUIReader
         return AddonStatsMatchCard(addon, pendingNavCardId);
     }
 
-    private static unsafe bool AddonStatsMatchCard(AddonGSInfoCardList* addon, int cardId)
+    private static bool AddonStatsMatchCard(AddonGSInfoCardList* addon, int cardId)
     {
         var hasSideStats = addon->NumSideU != 0 || addon->NumSideL != 0 || addon->NumSideD != 0 || addon->NumSideR != 0;
         if (!hasSideStats)
@@ -420,7 +421,7 @@ public unsafe class UIReaderTriadCardList : IUIReader
                addon->NumSideR == expectedCard.Sides[3];
     }
 
-    private static unsafe bool CardNumberNodeMatches(AddonGSInfoCardList* addon, int cardId)
+    private static bool CardNumberNodeMatches(AddonGSInfoCardList* addon, int cardId)
     {
         var node = addon->SelectedCardNumber;
         if (node == null)
@@ -451,7 +452,7 @@ public unsafe class UIReaderTriadCardList : IUIReader
         return nint.Zero;
     }
 
-    public static unsafe nint LoadFailsafeAgent()
+    public static nint LoadFailsafeAgent()
     {
         var uiModule = (UIModule*)Svc.GameGui.GetUIModule().Address;
         if (uiModule != null)
@@ -493,7 +494,6 @@ public unsafe class UIReaderTriadCardList : IUIReader
 public class UIStateTriadCardList
 {
     public byte cardIndex;
-    public int selectedCardId = -1;
     public Vector2 descriptionPos;
     public Vector2 descriptionSize;
     public byte filterMode;
@@ -508,6 +508,7 @@ public class UIStateTriadCardList
     public byte rarity;
     public Vector2 screenPos;
     public Vector2 screenSize;
+    public int selectedCardId = -1;
     public byte type;
 
     public int ResolveCardId(GameUIParser ctx)

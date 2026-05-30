@@ -17,6 +17,8 @@ public unsafe class PluginWindowCardSearch : Window, IDisposable
     private readonly PluginWindowNpcStats statsWindow;
 
     private readonly UIReaderTriadCardList uiReaderCardList;
+
+    private int activeTab;
     private int filterMode = -1;
     private bool hideNpcBeatenOnce;
     private bool hideNpcCompleted;
@@ -24,11 +26,11 @@ public unsafe class PluginWindowCardSearch : Window, IDisposable
 
     private bool npcFilterDataStale = true;
     private int numNotOwnedRewards;
+
+    private int pluginNavTargetCardId = -1;
     private bool sawGameDataReady;
     private ImGuiTextFilterPtr searchFilterCard;
     private ImGuiTextFilterPtr searchFilterNpc;
-
-    private int pluginNavTargetCardId = -1;
     private int selectedCardIdx;
     private int selectedNpcIdx;
     private bool showNotOwnedOnly;
@@ -303,21 +305,29 @@ public unsafe class PluginWindowCardSearch : Window, IDisposable
 
         OnGameDataReady();
 
-        if (ImGui.BeginTabBar("##CollectionSearch"))
+        // Selectable-based tab header — replaces ImGui.BeginTabBar/BeginTabItem which trips a Dalamud ImGui internal assertion ("mouse_button >= 0 && mouse_button < ImGuiMouseButton_COUNT") inside TabItemEx.
+        DrawTabHeader();
+        ImGui.Separator();
+
+        switch (activeTab)
         {
-            if (ImGui.BeginTabItem("Cards"))
-            {
-                DrawCardsTab();
-                ImGui.EndTabItem();
-            }
+            case 0: DrawCardsTab(); break;
+            case 1: DrawNpcTab(); break;
+        }
+    }
 
-            if (ImGui.BeginTabItem("NPC"))
-            {
-                DrawNpcTab();
-                ImGui.EndTabItem();
-            }
+    private void DrawTabHeader()
+    {
+        if (ImGui.Selectable("Cards", activeTab == 0, ImGuiSelectableFlags.None, ImGui.CalcTextSize("Cards") + new Vector2(12, 0)))
+        {
+            activeTab = 0;
+        }
 
-            ImGui.EndTabBar();
+        ImGui.SameLine();
+
+        if (ImGui.Selectable("NPC", activeTab == 1, ImGuiSelectableFlags.None, ImGui.CalcTextSize("NPC") + new Vector2(12, 0)))
+        {
+            activeTab = 1;
         }
     }
 
@@ -364,7 +374,7 @@ public unsafe class PluginWindowCardSearch : Window, IDisposable
         }
 
         RebuildCardList(uiReaderCardList.cachedState);
-        searchFilterCard.Draw("", WindowContentWidth * ImGuiHelpers.GlobalScale);
+        searchFilterCard.Draw("##cardSearchFilter", WindowContentWidth * ImGuiHelpers.GlobalScale);
 
         if (ImGui.BeginListBox("##cards", new(WindowContentWidth * ImGuiHelpers.GlobalScale, ImGui.GetTextLineHeightWithSpacing() * 10)))
         {
@@ -431,7 +441,7 @@ public unsafe class PluginWindowCardSearch : Window, IDisposable
             npcFilterDataStale = false;
         }
 
-        searchFilterNpc.Draw("", WindowContentWidth * ImGuiHelpers.GlobalScale);
+        searchFilterNpc.Draw("##npcSearchFilter", WindowContentWidth * ImGuiHelpers.GlobalScale);
 
         if (!IsGameDataReady)
         {

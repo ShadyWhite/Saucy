@@ -18,7 +18,7 @@ public class Configuration : IPluginConfiguration
 
     public bool SliceIsRightModuleEnabled;
 
-    public bool UseRecommendedDeck { get; set; } = false;
+    public bool UseSimmedDeck { get; set; } = false;
 
     public bool LogTriadDeckOptimizerToChat { get; set; } = false;
 

@@ -1,12 +1,9 @@
-using Dalamud.Utility;
 using ECommons.Automation;
 using ECommons.Automation.UIInput;
-using ECommons.UIHelpers.AddonMasterImplementations;
 using FFXIVClientStructs.FFXIV.Client.UI;
 using FFXIVClientStructs.FFXIV.Client.UI.Agent;
 using FFXIVClientStructs.FFXIV.Component.GUI;
 using Saucy.Framework;
-using Lumina.Excel.Sheets;
 using System;
 using System.Collections.Generic;
 using static ECommons.GenericHelpers;
@@ -22,6 +19,10 @@ internal static unsafe class TriadAutomater
     private const int DeckSelectPostOptimizerCooldownFrames = Solver.DeckSelectPostProfileWriteFrames;
     private const int MaxDeckSelectMethods = 5;
     private const int ManualDeckSelectMethods = 5;
+    private const int ResultOutcomeFallbackFrames = 45;
+
+    private const int RematchRetryCooldownFrames = 15;
+    private const int MatchAcceptRetryCooldownFrames = 15;
     private static readonly uint[] DeckSelectRecommendedButtonIds =
     [
         0, 2, 4
@@ -34,12 +35,6 @@ internal static unsafe class TriadAutomater
     [
         5, 1
     ];
-    private const int ResultOutcomeFallbackFrames = 45;
-
-    private const int RematchRetryCooldownFrames = 15;
-    private const int MatchAcceptRetryCooldownFrames = 15;
-    private const ushort ResultQuitNodeId = 20;
-    private const ushort ResultRematchNodeId = 21;
 
     public static bool ModuleEnabled = false;
     public static Dictionary<uint, int> TempCardsWonList = [];
@@ -79,12 +74,9 @@ internal static unsafe class TriadAutomater
     private static uint pendingCardDropVerifyItemId;
     private static readonly HashSet<int> farmDropsCountedThisMatch = [];
 
-    private static nint cachedResultButtonAddonPtr;
-    private static ushort resolvedRematchNodeId;
-    private static ushort resolvedQuitNodeId;
-    private static bool resultButtonsResolved;
-
     private static int lastTargetNpcId = -1;
+
+    private static int forceCloseDeckSelectCooldown;
 
     public static int DeckSelectFramesOpen { get; private set; }
 
@@ -134,7 +126,7 @@ internal static unsafe class TriadAutomater
             DetectAndProcessCardFarmDrops(pendingCardDropVerifyItemId);
         }
 
-        if (TTSolver.preGameDecks.Count > 0 && C.UseRecommendedDeck)
+        if (TTSolver.preGameDecks.Count > 0 && C.UseSimmedDeck)
         {
             var selectedDeck = C.SelectedDeckIndex;
             if (selectedDeck >= 0 && !TTSolver.preGameDecks.ContainsKey(selectedDeck))
@@ -302,8 +294,8 @@ internal static unsafe class TriadAutomater
     /// <summary>True while any tracked NPC reward card is below the per-card target count.</summary>
     public static bool IsCardFarmModeActive() => ModuleEnabled && PlayUntilAllCardsDropOnce;
 
-    /// <summary>Card-farm mode builds and selects Saucy decks even when recommended-deck mode is off.</summary>
-    public static bool ShouldAutoManageDeck() => C.UseRecommendedDeck || IsCardFarmModeActive();
+    /// <summary>True only when the user opted into auto-pick. Farm mode no longer forces deck-building — the manually selected deck is used as-is.</summary>
+    public static bool ShouldAutoManageDeck() => C.UseSimmedDeck;
 
     /// <summary>True only when every tracked card has been obtained at least once this session.</summary>
     public static bool IsCardFarmComplete()
@@ -524,7 +516,7 @@ internal static unsafe class TriadAutomater
 
             TTSolver.EnsureRunTargetNpcSynced();
             RefreshRunTargetFromPrep();
-            ActivateCardFarmSession(ResolveRunTargetNpc(), resetProgress: true);
+            ActivateCardFarmSession(ResolveRunTargetNpc(), true);
         }
         else
         {
@@ -618,19 +610,7 @@ internal static unsafe class TriadAutomater
         pendingRegistrationDismiss = true;
     }
 
-    public static void ResetResultMatchRecording()
-    {
-        lastRecordedResultAddonPtr = nint.Zero;
-        ResetResultButtonBindings();
-    }
-
-    private static void ResetResultButtonBindings()
-    {
-        cachedResultButtonAddonPtr = nint.Zero;
-        resultButtonsResolved = false;
-        resolvedRematchNodeId = 0;
-        resolvedQuitNodeId = 0;
-    }
+    public static void ResetResultMatchRecording() => lastRecordedResultAddonPtr = nint.Zero;
 
     private static bool IsResultMatchRecorded(nint resultAddonPtr) =>
         resultAddonPtr != nint.Zero && resultAddonPtr == lastRecordedResultAddonPtr;
@@ -786,7 +766,7 @@ internal static unsafe class TriadAutomater
 
         if (IsCardFarmModeActive() && TempCardsWonList.ContainsKey((uint)droppedCard.CardId))
         {
-            TryProcessNewFarmDrop(droppedCard, 0);
+            TryProcessNewFarmDrop(droppedCard);
             return;
         }
 
@@ -1159,18 +1139,7 @@ internal static unsafe class TriadAutomater
                 return true;
             }
 
-            if (!EnsureResultButtonsResolved(addon))
-            {
-                return true;
-            }
-
-            if (resolvedRematchNodeId == 0)
-            {
-                framesSinceRematchAttempt = RematchRetryCooldownFrames;
-                return true;
-            }
-
-            TryClickResultButton(addon, resolvedRematchNodeId, false);
+            TryFireResultRematch(addon);
 
             if (DidEnterRematchFlow())
             {
@@ -1193,18 +1162,19 @@ internal static unsafe class TriadAutomater
 
     private static bool TryDismissTriadResult(AtkUnitBase* addon)
     {
-        EnsureResultButtonsResolved(addon);
-
-        if (resolvedQuitNodeId != 0 &&
-            TryClickResultButton(addon, resolvedQuitNodeId, false))
+        try
         {
-            return true;
+            // Standard result-screen Quit callback. Locale and button-id independent.
+            addon->FireCallbackInt(1);
+            addon->Update(0);
+            if (!addon->IsVisible)
+            {
+                return true;
+            }
         }
-
-        if (resolvedQuitNodeId != 0 &&
-            TryClickResultButton(addon, resolvedQuitNodeId))
+        catch (Exception ex)
         {
-            return true;
+            Svc.Log.Verbose(ex, "[TriadAutomater] Result FireCallbackInt(1) failed");
         }
 
         try
@@ -1220,251 +1190,32 @@ internal static unsafe class TriadAutomater
         return !addon->IsVisible;
     }
 
+    private static bool TryFireResultRematch(AtkUnitBase* addon)
+    {
+        try
+        {
+            // Primary action callback — Rematch.
+            addon->FireCallbackInt(0);
+            addon->Update(0);
+            return true;
+        }
+        catch (Exception ex)
+        {
+            Svc.Log.Verbose(ex, "[TriadAutomater] Result FireCallbackInt(0) failed");
+            return false;
+        }
+    }
+
     private static bool DidEnterRematchFlow() =>
         IsPrepDeckSelectVisible() || IsMatchRegistrationVisible();
 
-    private static bool TryClickResultButton(AtkUnitBase* addon, ushort nodeId, bool requireEnabled = true) =>
-        TryClickAddonButton(addon, FindResultButton(addon, nodeId), requireEnabled);
+    private static bool IsResultScreenReadyForRematch(AtkUnitBase* addon) => addon->IsReady;
 
-    private static bool IsResultScreenReadyForRematch(AtkUnitBase* addon)
-    {
-        if (!addon->IsReady)
-        {
-            return false;
-        }
+    internal static bool HasVisibleResultActionButtons(AtkUnitBase* addon) => addon->IsReady;
 
-        var quitButton = FindResultButton(addon, ResultQuitNodeId);
-        var rematchButton = FindResultButton(addon, ResultRematchNodeId);
-        return quitButton != null &&
-               rematchButton != null &&
-               quitButton->AtkResNode != null &&
-               rematchButton->AtkResNode != null &&
-               quitButton->AtkResNode->IsVisible() &&
-               rematchButton->AtkResNode->IsVisible();
-    }
+    internal static bool IsTriadResultScreenReady(AtkUnitBase* addon) => addon->IsReady;
 
-    private static bool EnsureResultButtonsResolved(AtkUnitBase* addon)
-    {
-        var addonPtr = (nint)addon;
-        if (resultButtonsResolved && cachedResultButtonAddonPtr == addonPtr)
-        {
-            return resolvedRematchNodeId != 0;
-        }
-
-        var button20 = FindResultButton(addon, ResultQuitNodeId);
-        var button21 = FindResultButton(addon, ResultRematchNodeId);
-        if (button20 == null || button21 == null ||
-            button20->AtkResNode == null || button21->AtkResNode == null ||
-            !button20->AtkResNode->IsVisible() || !button21->AtkResNode->IsVisible())
-        {
-            return false;
-        }
-
-        var label20 = GetResultButtonLabel(button20);
-        var label21 = GetResultButtonLabel(button21);
-
-        if (!string.IsNullOrWhiteSpace(label20) && LabelMatchesRematch(label20) &&
-            !string.IsNullOrWhiteSpace(label21) && LabelMatchesQuit(label21))
-        {
-            ApplyResultButtonBindings(addonPtr, ResultQuitNodeId, ResultRematchNodeId);
-            return true;
-        }
-
-        if (!string.IsNullOrWhiteSpace(label21) && LabelMatchesRematch(label21) &&
-            !string.IsNullOrWhiteSpace(label20) && LabelMatchesQuit(label20))
-        {
-            ApplyResultButtonBindings(addonPtr, ResultRematchNodeId, ResultQuitNodeId);
-            return true;
-        }
-
-        return false;
-    }
-
-    private static void ApplyResultButtonBindings(nint addonPtr, ushort rematchNodeId, ushort quitNodeId)
-    {
-        resolvedRematchNodeId = rematchNodeId;
-        resolvedQuitNodeId = quitNodeId;
-        cachedResultButtonAddonPtr = addonPtr;
-        resultButtonsResolved = true;
-    }
-
-    private static bool LabelMatchesRematch(string label)
-    {
-        if (string.IsNullOrWhiteSpace(label))
-        {
-            return false;
-        }
-
-        foreach (var token in new[]
-        {
-            "Rematch", "Revanche", "Erneutes Spiel", "Revenge", "再戦", "再戦する", "リマッチ"
-        })
-        {
-            if (label.Contains(token, StringComparison.OrdinalIgnoreCase))
-            {
-                return true;
-            }
-        }
-
-        return false;
-    }
-
-    private static bool LabelMatchesQuit(string label)
-    {
-        if (string.IsNullOrWhiteSpace(label))
-        {
-            return false;
-        }
-
-        foreach (var token in new[]
-        {
-            "Quit", "Beenden", "Quitter", "Abandon", "Exit", "やめる", "終了"
-        })
-        {
-            if (label.Contains(token, StringComparison.OrdinalIgnoreCase))
-            {
-                return true;
-            }
-        }
-
-        return false;
-    }
-
-    private static string? GetResultButtonLabel(AtkComponentButton* button)
-    {
-        if (button == null)
-        {
-            return null;
-        }
-
-        var comp = (AtkComponentBase*)button;
-        for (var i = 0; i < comp->UldManager.NodeListCount; i++)
-        {
-            var node = comp->UldManager.NodeList[i];
-            if (node == null)
-            {
-                continue;
-            }
-
-            var text = GUINodeUtils.GetNodeText(node);
-            if (!string.IsNullOrWhiteSpace(text))
-            {
-                return text.Trim();
-            }
-
-            if ((int)node->Type < 1000)
-            {
-                continue;
-            }
-
-            var inner = ((AtkComponentNode*)node)->Component;
-            if (inner == null)
-            {
-                continue;
-            }
-
-            for (var j = 0; j < inner->UldManager.NodeListCount; j++)
-            {
-                text = GUINodeUtils.GetNodeText(inner->UldManager.NodeList[j]);
-                if (!string.IsNullOrWhiteSpace(text))
-                {
-                    return text.Trim();
-                }
-            }
-        }
-
-        foreach (var node in GUINodeUtils.GetAllChildNodes(button->AtkResNode) ?? [])
-        {
-            var text = GUINodeUtils.GetNodeText(node);
-            if (!string.IsNullOrWhiteSpace(text))
-            {
-                return text.Trim();
-            }
-        }
-
-        return null;
-    }
-
-    internal static bool HasVisibleResultActionButtons(AtkUnitBase* addon)
-    {
-        foreach (var node in GUINodeUtils.GetAllChildNodes(addon->RootNode) ?? [])
-        {
-            if (node != null &&
-                (node->NodeId == ResultQuitNodeId || node->NodeId == ResultRematchNodeId) &&
-                node->IsVisible())
-            {
-                return true;
-            }
-        }
-
-        return false;
-    }
-
-    private static AtkComponentButton* TryGetButtonFromNode(AtkResNode* node)
-    {
-        if (node == null)
-        {
-            return null;
-        }
-
-        var button = node->GetAsAtkComponentButton();
-        if (button != null)
-        {
-            return button;
-        }
-
-        if ((int)node->Type >= 1000)
-        {
-            var component = ((AtkComponentNode*)node)->Component;
-            if (component != null)
-            {
-                return (AtkComponentButton*)component;
-            }
-        }
-
-        return null;
-    }
-
-    private static AtkComponentButton* FindResultButton(AtkUnitBase* addon, ushort targetNodeId)
-    {
-        for (var i = 0; i < addon->UldManager.NodeListCount; i++)
-        {
-            var node = addon->UldManager.NodeList[i];
-            if (node == null || node->NodeId != targetNodeId)
-            {
-                continue;
-            }
-
-            var button = TryGetButtonFromNode(node);
-            if (button != null)
-            {
-                return button;
-            }
-        }
-
-        foreach (var node in GUINodeUtils.GetAllChildNodes(addon->RootNode) ?? [])
-        {
-            if (node == null || node->NodeId != targetNodeId)
-            {
-                continue;
-            }
-
-            var button = TryGetButtonFromNode(node);
-            if (button != null)
-            {
-                return button;
-            }
-        }
-
-        return null;
-    }
-
-    internal static bool IsTriadResultScreenReady(AtkUnitBase* addon) =>
-        FindResultButton(addon, ResultQuitNodeId) != null ||
-        FindResultButton(addon, ResultRematchNodeId) != null ||
-        HasVisibleResultActionButtons(addon);
-
-    internal static unsafe bool TryClickGoldSaucerCardGridButton(nint addonPtr, int pageIndex, int cellIndex)
+    internal static bool TryClickGoldSaucerCardGridButton(nint addonPtr, int pageIndex, int cellIndex)
     {
         if (addonPtr == nint.Zero || cellIndex < 0 || cellIndex >= 30)
         {
@@ -1484,7 +1235,7 @@ internal static unsafe class TriadAutomater
         return TryClickGoldSaucerCardCell(addonPtr, cellIndex);
     }
 
-    internal static unsafe bool TryClickGoldSaucerCardCell(nint addonPtr, int cellIndex)
+    internal static bool TryClickGoldSaucerCardCell(nint addonPtr, int cellIndex)
     {
         if (addonPtr == nint.Zero || cellIndex < 0 || cellIndex >= 30)
         {
@@ -1493,7 +1244,7 @@ internal static unsafe class TriadAutomater
 
         var addon = (AddonGSInfoCardList*)addonPtr;
         var cardButton = (AtkComponentButton*)(*(nint*)((byte*)addon + 0x3D0 + (cellIndex * sizeof(nint))));
-        return TryClickAddonButton((AtkUnitBase*)addon, cardButton, requireEnabled: false);
+        return TryClickAddonButton((AtkUnitBase*)addon, cardButton, false);
     }
 
     private static bool TryClickAddonButton(AtkUnitBase* addon, AtkComponentButton* button, bool requireEnabled = true)
@@ -1641,7 +1392,7 @@ internal static unsafe class TriadAutomater
             uiReaderPrep.RefreshDeckSelectList((nint)addon);
 
             // Wait while the deck optimizer is still building the Saucy deck — otherwise we fire the in-game Recommended button before the optimized deck is written.
-            if (ShouldAutoManageDeck() && TTSolver.IsDeckSelectPrepBlocking(C.UseRecommendedDeck))
+            if (ShouldAutoManageDeck() && TTSolver.IsDeckSelectPrepBlocking(C.UseSimmedDeck))
             {
                 return;
             }
@@ -1673,7 +1424,7 @@ internal static unsafe class TriadAutomater
             if (!TTSolver.TryGetDeckSelectCandidate(ShouldAutoManageDeck(), C.SelectedDeckIndex, attemptedDeckIndices,
                 out var deck))
             {
-                if (C.UseRecommendedDeck && TTSolver.HasOptimizedDeckApplied &&
+                if (C.UseSimmedDeck && TTSolver.HasOptimizedDeckApplied &&
                     TryRecommendedDeckButton(addon))
                 {
                     deckSelectAttemptCount++;
@@ -1685,7 +1436,7 @@ internal static unsafe class TriadAutomater
 
             if (deck < 0)
             {
-                if (C.UseRecommendedDeck && TTSolver.HasOptimizedDeckApplied &&
+                if (C.UseSimmedDeck && TTSolver.HasOptimizedDeckApplied &&
                     TryRecommendedDeckButton(addon))
                 {
                     deckSelectAttemptCount++;
@@ -1693,7 +1444,7 @@ internal static unsafe class TriadAutomater
                     return;
                 }
 
-                if (C.UseRecommendedDeck && TryRandomDeckButton(addon))
+                if (C.UseSimmedDeck && TryRandomDeckButton(addon))
                 {
                     deckSelectAttemptCount++;
                     framesSinceDeckSelectAttempt = DeckSelectRetryCooldownFrames;
@@ -1751,8 +1502,6 @@ internal static unsafe class TriadAutomater
             Svc.Log.Verbose(ex, "[TriadAutomater] Direct deck select hide failed");
         }
     }
-
-    private static int forceCloseDeckSelectCooldown;
 
     private static void TryForceCloseDeckSelectOverlay()
     {
@@ -2017,50 +1766,11 @@ internal static unsafe class TriadAutomater
 
     private static bool TryClickDeckConfirmButton(AtkUnitBase* addon)
     {
-        if (TryClickDeckSelectButtonByLabel(addon, "Confirm", "OK", "Bestätigen", "決定"))
-        {
-            return true;
-        }
-
         foreach (var buttonId in DeckSelectConfirmButtonIds)
         {
             if (TryClickDeckSelectButton(addon, buttonId))
             {
                 return true;
-            }
-        }
-
-        return false;
-    }
-
-    private static bool TryClickDeckSelectButtonByLabel(AtkUnitBase* addon, params string[] labels)
-    {
-        for (var i = 0; i < addon->UldManager.NodeListCount; i++)
-        {
-            var node = addon->UldManager.NodeList[i];
-            if (node == null)
-            {
-                continue;
-            }
-
-            var button = TryGetButtonFromNode(node);
-            if (button == null)
-            {
-                continue;
-            }
-
-            var label = GetResultButtonLabel(button);
-            if (string.IsNullOrWhiteSpace(label))
-            {
-                continue;
-            }
-
-            foreach (var token in labels)
-            {
-                if (label.Contains(token, StringComparison.OrdinalIgnoreCase))
-                {
-                    return TryClickAddonButton(addon, button);
-                }
             }
         }
 
@@ -2123,7 +1833,7 @@ internal static unsafe class TriadAutomater
         {
             message = $"[Saucy] Retrying with deck {deck + 1}...";
         }
-        else if (C.UseRecommendedDeck && TTSolver.HasOptimizedDeckApplied)
+        else if (C.UseSimmedDeck && TTSolver.HasOptimizedDeckApplied)
         {
             message = $"[Saucy] Selecting optimized deck {deck + 1}...";
         }
@@ -2137,7 +1847,7 @@ internal static unsafe class TriadAutomater
                 : $"[Saucy] Selecting deck {deck + 1}...";
         }
 
-        if (C.UseRecommendedDeck)
+        if (C.UseSimmedDeck)
         {
             PrintTriadDeckLog(message);
         }
@@ -2271,7 +1981,7 @@ internal static unsafe class TriadAutomater
             }
 
             // Hold the Challenge click until the deck optimizer is done — otherwise we open deck select before the Saucy deck exists and fall back to the in-game Recommended button.
-            if (ShouldAutoManageDeck() && TTSolver.IsDeckSelectPrepBlocking(C.UseRecommendedDeck))
+            if (ShouldAutoManageDeck() && TTSolver.IsDeckSelectPrepBlocking(C.UseSimmedDeck))
             {
                 return;
             }
@@ -2325,14 +2035,26 @@ internal static unsafe class TriadAutomater
             return true;
         }
 
-        // Try the Quit button by label first (most reliable across game updates).
-        if (TryClickRegistrationButtonByLabel(addon, "Quit", "Beenden", "Quitter", "Abandon", "Decline", "やめる"))
+        // Primary: fire the addon's close callback. Locale-agnostic, equivalent to clicking the X / Quit.
+        try
         {
-            return !addon->IsVisible;
+            addon->FireCallbackInt(-1);
+            addon->Update(0);
+            if (!addon->IsVisible)
+            {
+                return true;
+            }
+        }
+        catch (Exception ex)
+        {
+            Svc.Log.Verbose(ex, "[TriadAutomater] Registration FireCallbackInt(-1) failed");
         }
 
-        // Fallback: common adjacent component IDs (Challenge is 41).
-        foreach (var buttonId in new uint[] { 42, 43, 50 })
+        // Fallback: try adjacent component IDs for Quit (Challenge button is id 41).
+        foreach (var buttonId in new uint[]
+        {
+            42, 43, 50
+        })
         {
             var button = addon->GetComponentButtonById(buttonId);
             if (button == null || button->AtkResNode == null || !button->AtkResNode->IsVisible() || !button->IsEnabled)
@@ -2367,40 +2089,6 @@ internal static unsafe class TriadAutomater
         }
 
         return !addon->IsVisible;
-    }
-
-    private static bool TryClickRegistrationButtonByLabel(AtkUnitBase* addon, params string[] labels)
-    {
-        for (var i = 0; i < addon->UldManager.NodeListCount; i++)
-        {
-            var node = addon->UldManager.NodeList[i];
-            if (node == null)
-            {
-                continue;
-            }
-
-            var button = TryGetButtonFromNode(node);
-            if (button == null)
-            {
-                continue;
-            }
-
-            var label = GetResultButtonLabel(button);
-            if (string.IsNullOrWhiteSpace(label))
-            {
-                continue;
-            }
-
-            foreach (var token in labels)
-            {
-                if (label.Contains(token, StringComparison.OrdinalIgnoreCase))
-                {
-                    return TryClickAddonButton(addon, button);
-                }
-            }
-        }
-
-        return false;
     }
 
     public static bool Logout()

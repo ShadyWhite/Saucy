@@ -109,7 +109,8 @@ public class Solver
             return;
         }
 
-        if (!C.UseRecommendedDeck && !TriadAutomater.IsCardFarmModeActive())
+        // Auto-build is strictly gated on the user's auto-pick checkbox. Farm mode alone no longer triggers the optimizer.
+        if (!C.UseSimmedDeck)
         {
             return;
         }
@@ -247,7 +248,8 @@ public class Solver
 
     public bool IsDeckSelectPrepBlocking(bool useRecommended)
     {
-        if (!useRecommended && !TriadAutomater.IsCardFarmModeActive())
+        // Only block while the user has opted into auto-pick — manual-deck users (incl. farm mode with a chosen deck) shouldn't wait on the optimizer.
+        if (!useRecommended)
         {
             return false;
         }
@@ -756,7 +758,7 @@ public class Solver
         }
 
         var npcChanged = lastAppliedRunTargetNpcId != npc.Id;
-        var shouldManageDeck = C.UseRecommendedDeck || TriadAutomater.IsCardFarmModeActive();
+        var shouldManageDeck = C.UseSimmedDeck || TriadAutomater.IsCardFarmModeActive();
 
         preGameNpc = npc;
         lastGameNpc = npc;
@@ -948,7 +950,7 @@ public class Solver
             pauseOptimizerForDeckEval = preGameDecks.Count > 0;
             UpdateDeckOptimizerPause();
 
-            var shouldManageDeck = C.UseRecommendedDeck || TriadAutomater.IsCardFarmModeActive();
+            var shouldManageDeck = C.UseSimmedDeck || TriadAutomater.IsCardFarmModeActive();
             if (shouldManageDeck && newPreGameNpc != null && !parseCtx.HasErrors)
             {
                 StartDeckOptimizer(newPreGameNpc, newPreGameMods);
@@ -958,7 +960,7 @@ public class Solver
                 ResetDeckOptimizer();
             }
         }
-        else if (!C.UseRecommendedDeck && !TriadAutomater.IsCardFarmModeActive())
+        else if (!C.UseSimmedDeck && !TriadAutomater.IsCardFarmModeActive())
         {
             ResetDeckOptimizer();
         }
@@ -1053,9 +1055,9 @@ public class Solver
             }
         }
 
-        return new DeckData
+        return new()
         {
-            id = deckOb.id, name = deckOb.name, solverDeck = new TriadDeck(cards)
+            id = deckOb.id, name = deckOb.name, solverDeck = new(cards)
         };
     }
 

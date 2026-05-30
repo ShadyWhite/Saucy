@@ -682,10 +682,10 @@ public unsafe class PluginUI : Window
             return;
         }
 
-        var useAutoDeck = C.UseRecommendedDeck;
+        var useAutoDeck = C.UseSimmedDeck;
         if (ImGui.Checkbox("Auto-pick deck with best win chance", ref useAutoDeck))
         {
-            C.UseRecommendedDeck = useAutoDeck;
+            C.UseSimmedDeck = useAutoDeck;
             C.Save();
             if (!useAutoDeck)
             {
@@ -695,7 +695,7 @@ public unsafe class PluginUI : Window
         ImGui.SameLine();
         ImGuiComponents.HelpMarker("Runs the TriadBuddy deck simulator (~2000 simulated games per candidate) against the NPC's rules and reward pool to build the best deck from your owned cards, then writes it to a profile slot named \"{NPC} (Saucy)\". Does NOT click the in-game \"Recommended Deck\" button.");
 
-        if (C.UseRecommendedDeck)
+        if (C.UseSimmedDeck)
         {
             using var indent = ImRaii.PushIndent();
             var logDeckOptimizer = C.LogTriadDeckOptimizerToChat;

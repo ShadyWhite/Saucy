@@ -1,6 +1,8 @@
 using Dalamud.Game.ClientState.Conditions;
+using Dalamud.Game.ClientState.Objects.Enums;
 using Dalamud.Game.Text.SeStringHandling.Payloads;
 using ECommons.GameHelpers;
+using Lumina.Excel.Sheets;
 using Saucy.IPC;
 using System;
 using System.Globalization;
@@ -139,12 +141,18 @@ internal static class TriadMapNavigation
                     return;
                 }
 
-                if (!TryStartVnav(pending))
+                if (TryStartVnav(pending))
                 {
                     ClearPending();
+                    return;
                 }
-                else
+
+                var pathfindTimeout = pending.ArrivedViaMultiAreaRoute
+                    ? PostRouteNavReadyTimeout
+                    : TimeSpan.FromSeconds(15);
+                if (DateTime.UtcNow - pending.PhaseStartedUtc > pathfindTimeout)
                 {
+                    Svc.Chat.PrintError("[Saucy] vnavmesh could not start movement.");
                     ClearPending();
                 }
 
@@ -298,11 +306,8 @@ internal static class TriadMapNavigation
     {
         pending.RouteExecution = null;
         pending.ArrivedViaMultiAreaRoute = true;
-        if (ResolveDestination(pending.Location, pending.Npc) is { } destination)
-        {
-            pending.Destination = destination;
-        }
-
+        pending.Fly = false;
+        pending.Destination = ResolvePostRouteDestination(pending);
         pending.Phase = NavigationPhase.WaitingForNavReady;
         pending.PhaseStartedUtc = DateTime.UtcNow;
         Svc.Chat.Print(
@@ -460,24 +465,48 @@ internal static class TriadMapNavigation
             return false;
         }
 
-        var pointOnFloor = Vnavmesh.TryGetPointOnFloor(pending.Destination) ?? pending.Destination;
+        var indoor = pending.ArrivedViaMultiAreaRoute || IsIndoorTerritory(Svc.ClientState.TerritoryType);
+        var pointOnFloor = Vnavmesh.TryGetPointOnFloor(pending.Destination, indoor)
+                           ?? pending.Destination;
 
-        if (!Vnavmesh.TryPathfindAndMoveTo(pointOnFloor, pending.Fly))
+        if (AttemptPathfind(pending, pointOnFloor, pending.Fly))
         {
-            Svc.Chat.PrintError("[Saucy] vnavmesh could not start movement.");
+            PrintVnavStarted(pending, pointOnFloor);
+            return true;
+        }
+
+        if (pending.Fly && AttemptPathfind(pending, pointOnFloor, false))
+        {
+            pending.Fly = false;
+            PrintVnavStarted(pending, pointOnFloor);
+            return true;
+        }
+
+        return false;
+    }
+
+    private static bool AttemptPathfind(PendingNavigation pending, Vector3 pointOnFloor, bool fly)
+    {
+        if (!Vnavmesh.TryPathfindAndMoveTo(pointOnFloor, fly))
+        {
+            DebugLog(pending, $"vnav rejected path (fly={fly}) toward {FormatDestination(pointOnFloor)}");
             return false;
         }
 
         if (!Vnavmesh.IsMoving())
         {
-            Svc.Chat.PrintError("[Saucy] vnavmesh accepted the path but did not start moving.");
+            DebugLog(pending, $"vnav accepted path but did not start moving (fly={fly})");
             return false;
         }
 
+        return true;
+    }
+
+    private static void PrintVnavStarted(PendingNavigation pending, Vector3 pointOnFloor)
+    {
         Svc.Chat.Print(
             $"[Saucy] Moving to {pending.Location.PlaceName} {FormatDestination(pending.Destination)}.");
         DebugLog(pending, $"vnav started toward {FormatDestination(pointOnFloor)}");
-        return true;
     }
 
     private static bool IsLifestreamTravelComplete(PendingNavigation pending)
@@ -646,7 +675,75 @@ internal static class TriadMapNavigation
         return GetWorldPositionFromMapLink(location);
     }
 
+    private static Vector3 ResolvePostRouteDestination(PendingNavigation pending)
+    {
+        if (ResolveLiveTriadNpcPosition(pending.Npc) is { } livePos)
+        {
+            return livePos;
+        }
+
+        if (ResolveDestination(pending.Location, pending.Npc) is { } resolved)
+        {
+            return resolved;
+        }
+
+        var route = MultiAreaRouteRegistry.FindRoute(pending.Location);
+        if (route is { InteriorMapId: not 0 })
+        {
+            var fromMap = GetWorldPositionFromMap(route.InteriorMapId, route.InteriorMapX, route.InteriorMapY);
+            if (fromMap != null)
+            {
+                return fromMap.Value;
+            }
+        }
+
+        return pending.Destination;
+    }
+
+    private static Vector3? ResolveLiveTriadNpcPosition(TriadNpc? npc)
+    {
+        if (npc == null)
+        {
+            return null;
+        }
+
+        foreach (var obj in Svc.Objects)
+        {
+            if (obj.ObjectKind != ObjectKind.EventNpc)
+            {
+                continue;
+            }
+
+            if (!npc.IsMatchingName(obj.Name.ToString()))
+            {
+                continue;
+            }
+
+            return obj.Position;
+        }
+
+        return null;
+    }
+
+    private static bool IsIndoorTerritory(uint territoryId)
+    {
+        var row = Svc.Data.GetExcelSheet<TerritoryType>()?.GetRowOrDefault(territoryId);
+        return row != null && !row.Value.Mount;
+    }
+
     internal static Vector3? GetWorldPosition(MapLinkPayload location) => GetWorldPositionFromMapLink(location);
+
+    internal static Vector3? GetWorldPositionFromMap(uint mapId, float mapX, float mapY)
+    {
+        var map = Svc.Data.GetExcelSheet<Map>()?.GetRowOrDefault(mapId);
+        if (map == null)
+        {
+            return null;
+        }
+
+        var worldXz = MapToWorld(new(mapX, mapY), map.Value);
+        return new Vector3(worldXz.X, 0f, worldXz.Y);
+    }
 
     private static Vector3? GetWorldPositionFromMapLink(MapLinkPayload location)
     {
