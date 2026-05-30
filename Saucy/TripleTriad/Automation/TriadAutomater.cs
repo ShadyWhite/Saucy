@@ -5,6 +5,7 @@ using ECommons.UIHelpers.AddonMasterImplementations;
 using FFXIVClientStructs.FFXIV.Client.UI;
 using FFXIVClientStructs.FFXIV.Client.UI.Agent;
 using FFXIVClientStructs.FFXIV.Component.GUI;
+using Saucy.Framework;
 using Lumina.Excel.Sheets;
 using System;
 using System.Collections.Generic;
@@ -2414,45 +2415,5 @@ internal static unsafe class TriadAutomater
         return true;
     }
 
-    public static bool SelectYesLogout()
-    {
-        var addon = GetSpecificYesno(Svc.Data.GetExcelSheet<Addon>().GetRow(115).Text.ToDalamudString().GetText());
-        if (addon == null)
-        {
-            return false;
-        }
-        new AddonMaster.SelectYesno(addon).Yes();
-        return true;
-    }
-
-    internal static AtkUnitBase* GetSpecificYesno(params string[] s)
-    {
-        for (var i = 1; i < 100; i++)
-        {
-            try
-            {
-                var addon = (AtkUnitBase*)Svc.GameGui.GetAddonByName("SelectYesno", i).Address;
-                if (addon == null)
-                {
-                    return null;
-                }
-                if (IsAddonReady(addon))
-                {
-                    var textNode = addon->UldManager.NodeList[15]->GetAsAtkTextNode();
-                    var text = textNode->NodeText.GetText();
-                    if (text.EqualsAny(s))
-                    {
-                        Svc.Log.Verbose($"SelectYesno {s} addon {i}");
-                        return addon;
-                    }
-                }
-            }
-            catch (Exception e)
-            {
-                e.Log();
-                return null;
-            }
-        }
-        return null;
-    }
+    public static bool SelectYesLogout() => SelectYesnoHelper.TryPressArmedYes();
 }

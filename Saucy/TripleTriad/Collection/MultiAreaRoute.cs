@@ -4,11 +4,11 @@ using Dalamud.Game.Text.SeStringHandling.Payloads;
 using ECommons.Automation;
 using ECommons.GameHelpers;
 using ECommons.Throttlers;
-using ECommons.UIHelpers.AddonMasterImplementations;
 using FFXIVClientStructs.FFXIV.Client.Game;
 using FFXIVClientStructs.FFXIV.Client.Game.Control;
 using FFXIVClientStructs.FFXIV.Client.Game.Object;
 using FFXIVClientStructs.FFXIV.Component.GUI;
+using Saucy.Framework;
 using Saucy.IPC;
 using System;
 using System.Collections.Generic;
@@ -40,7 +40,6 @@ internal sealed class MultiAreaRouteStep
     public uint ArrivalObjectDataId { get; init; }
     public float Range { get; init; } = 6f;
     public bool DismountFirst { get; init; }
-    public string? YesnoPromptText { get; init; }
 }
 
 internal sealed class MultiAreaRoute
@@ -119,7 +118,12 @@ internal static class AethernetShardLookup
                 continue;
             }
 
-            var name = row.PlaceName.Value.Name.ToString();
+            var name = row.AethernetName.ValueNullable?.Name.ToString();
+            if (string.IsNullOrEmpty(name))
+            {
+                continue;
+            }
+
             if (name.Equals(shardName, StringComparison.OrdinalIgnoreCase))
             {
                 Cache[shardName] = row.RowId;
@@ -317,13 +321,7 @@ internal static unsafe class MultiAreaRouteExecutor
 
     private static bool TickSelectYesno(MultiAreaRouteStep step)
     {
-        if (string.IsNullOrEmpty(step.YesnoPromptText))
-        {
-            return false;
-        }
-
-        var addon = TriadAutomater.GetSpecificYesno(step.YesnoPromptText);
-        if (addon == null)
+        if (!SelectYesnoHelper.TryGetVisible(out var yesno))
         {
             return false;
         }
@@ -333,13 +331,9 @@ internal static unsafe class MultiAreaRouteExecutor
             return false;
         }
 
-        try
+        if (!SelectYesnoHelper.PressYes(yesno))
         {
-            new AddonMaster.SelectYesno(addon).Yes();
-        }
-        catch (Exception ex)
-        {
-            Svc.Log.Verbose(ex, "[SaucyRoute] SelectYesno Yes click failed");
+            Svc.Log.Verbose("[SaucyRoute] SelectYesno Yes press failed");
             return false;
         }
 
@@ -435,6 +429,17 @@ internal static unsafe class MultiAreaRouteExecutor
     private static bool TickWaitForZone(RouteExecution execution)
     {
         if (IsBetweenAreas() || !Player.Interactable || Lifestream.IsBusyNow())
+        {
+            return false;
+        }
+
+        if (SelectYesnoHelper.TryGetVisible(out var yesno) && EzThrottler.Throttle("SaucyRouteYesno"))
+        {
+            SelectYesnoHelper.PressYes(yesno);
+            return false;
+        }
+
+        if (TalkHelper.TryAdvance("SaucyRouteTalk"))
         {
             return false;
         }
@@ -536,17 +541,16 @@ internal static unsafe class MultiAreaRouteExecutor
 internal static class FortempsManservantRoute
 {
     private const uint FoundationAetheryteId = 70;
+    private const uint LastVigilAethernetShardId = 87;
     private const uint GatekeeperNpcDataId = 1011217;
     private const uint FortempsManorTerritoryId = 433;
-    private const string LastVigilShardName = "The Last Vigil";
-    private const string EnterManorPromptText = "Enter Fortemps Manor?";
     private static readonly Vector3 GatekeeperApproachPoint = new(16.014f, 16.010f, -11.590f);
     private static readonly uint[] FortempsManorTerritoryIds = [FortempsManorTerritoryId];
 
     internal static readonly MultiAreaRoute Route = new()
     {
         Name = "Fortemps Manor",
-        TooltipHint = "Foundation aetheryte, aethernet to The Last Vigil, then into the manor.",
+        TooltipHint = "Foundation aetheryte, aethernet to The Last Vigil, mount, then enter the manor.",
         ArrivalTerritoryIds = FortempsManorTerritoryIds,
         Matches = location =>
         {
@@ -567,19 +571,19 @@ internal static class FortempsManservantRoute
             },
             new()
             {
-                Kind = MultiAreaRouteStepKind.Aethernet, AethernetShardName = LastVigilShardName
+                Kind = MultiAreaRouteStepKind.Aethernet, AetheryteId = LastVigilAethernetShardId
             },
             new()
             {
-                Kind = MultiAreaRouteStepKind.MoveTo, Position = GatekeeperApproachPoint, Fly = false, ArrivalObjectDataId = GatekeeperNpcDataId
+                Kind = MultiAreaRouteStepKind.Mount
+            },
+            new()
+            {
+                Kind = MultiAreaRouteStepKind.MoveTo, Position = GatekeeperApproachPoint, Fly = true, ArrivalObjectDataId = GatekeeperNpcDataId
             },
             new()
             {
                 Kind = MultiAreaRouteStepKind.Interact, ObjectDataId = GatekeeperNpcDataId, Range = 6f, DismountFirst = true
-            },
-            new()
-            {
-                Kind = MultiAreaRouteStepKind.SelectYesno, YesnoPromptText = EnterManorPromptText
             },
             new()
             {

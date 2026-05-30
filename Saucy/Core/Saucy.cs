@@ -512,13 +512,12 @@ public sealed class Saucy : IDalamudPlugin
     {
         try
         {
-            if (!TryGetAddonByName<AddonSelectYesno>("SelectYesno", out var yesno) ||
-                !IsAddonReady(&yesno->AtkUnitBase))
+            if (!SelectYesnoHelper.TryGetVisible(out _))
             {
                 return;
             }
 
-            new AddonMaster.SelectYesno(yesno).Yes();
+            SelectYesnoHelper.PressYes();
         }
         catch (Exception ex)
         {
@@ -550,6 +549,7 @@ public sealed class Saucy : IDalamudPlugin
 
     private static async Task PerformLogout()
     {
+        SelectYesnoHelper.ArmForYes(TimeSpan.FromSeconds(15));
         await Svc.Framework.RunOnTick(TriadAutomater.Logout, TimeSpan.FromMilliseconds(2000));
         await Svc.Framework.RunOnTick(TriadAutomater.SelectYesLogout, TimeSpan.FromMilliseconds(3500));
     }

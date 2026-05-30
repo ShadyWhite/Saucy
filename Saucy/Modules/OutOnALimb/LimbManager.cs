@@ -346,7 +346,7 @@ public unsafe class LimbManager
                     {
                         if (EzThrottler.Throttle("Yesno", 2000))
                         {
-                            new AddonMaster.SelectYesno(ss).No();
+                            Framework.SelectYesnoHelper.PressNo(ss);
                         }
                     }
                     else
@@ -357,14 +357,14 @@ public unsafe class LimbManager
                             {
                                 if (EzThrottler.Throttle("Yesno", 2000))
                                 {
-                                    new AddonMaster.SelectYesno(ss).Yes();
+                                    Framework.SelectYesnoHelper.PressYes(ss);
                                 }
                             }
                             else
                             {
                                 if (EzThrottler.Throttle("Yesno", 2000))
                                 {
-                                    new AddonMaster.SelectYesno(ss).No();
+                                    Framework.SelectYesnoHelper.PressNo(ss);
                                 }
                             }
                         }
@@ -374,14 +374,14 @@ public unsafe class LimbManager
                             {
                                 if (EzThrottler.Throttle("Yesno", 2000))
                                 {
-                                    new AddonMaster.SelectYesno(ss).Yes();
+                                    Framework.SelectYesnoHelper.PressYes(ss);
                                 }
                             }
                             else
                             {
                                 if (EzThrottler.Throttle("Yesno", 2000))
                                 {
-                                    new AddonMaster.SelectYesno(ss).No();
+                                    Framework.SelectYesnoHelper.PressNo(ss);
                                 }
                             }
                         }

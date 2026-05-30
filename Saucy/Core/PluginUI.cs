@@ -285,6 +285,17 @@ public unsafe class PluginUI : Window
         {
             C.EnableAutoMiniCactpot = enabled;
             ToggleEnabledModule(ModuleManager.GetModule<MiniCactpot.MiniCactpot>()!.InternalName, enabled);
+            if (ModuleManager.GetModule<MiniCactpot.MiniCactpot>() is { } miniCactpot)
+            {
+                if (enabled && !miniCactpot.IsEnabled)
+                {
+                    miniCactpot.EnableInternal();
+                }
+                else if (!enabled && miniCactpot.IsEnabled)
+                {
+                    miniCactpot.DisableInternal();
+                }
+            }
         }
     }
 

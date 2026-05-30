@@ -27,13 +27,17 @@ public abstract partial class Module : IModule
     }
 
     protected TaskManager TaskManager;
-    protected TaskManagerConfiguration TaskManagerConfiguration = new()
+    protected TaskManagerConfiguration TaskManagerConfiguration;
+
+    protected virtual TaskManagerConfiguration CreateTaskManagerConfiguration() => new()
     {
         ShowDebug = false, TimeLimitMS = 5000, AbortOnTimeout = true
     };
+
     public Module()
     {
         InternalName = GetType().Name;
+        TaskManagerConfiguration = CreateTaskManagerConfiguration();
         TaskManager = new(TaskManagerConfiguration);
     }
     public bool InSaucer => Svc.ClientState.TerritoryType is 144;
@@ -80,15 +84,15 @@ public abstract partial class Module
         try
         {
             Log($"Enabling module {InternalName}");
+            IsEnabled = true;
             Enable();
         }
         catch (Exception ex)
         {
             LogError($"Failed to enable module: {ex}");
+            IsEnabled = false;
             return;
         }
-
-        IsEnabled = true;
     }
 
     internal virtual void DisableInternal()
