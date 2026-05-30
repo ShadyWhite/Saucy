@@ -118,6 +118,7 @@ public sealed class Saucy : IDalamudPlugin
         Svc.Framework.Update -= RunBot;
         _triadCollectionHost?.Dispose();
         SubscriptionManager.DisposeAll();
+        TriadMapNavigation.CancelActiveNavigation();
         _triadCollectionHost = null;
         lock (_lockObj) { DisposeAudio(); }
         CufModule.FuncHook?.Dispose();
@@ -477,32 +478,62 @@ public sealed class Saucy : IDalamudPlugin
 
     private void TrySkipTriadDialogue()
     {
-        if (!IsTriadDialogueBlocking())
+        if (!TriadAutomater.ModuleEnabled || !ShouldAutoSkipTriadDialogue())
         {
             return;
         }
 
-        SkipDialogue();
-        TrySkipSelectYesno();
+        if (IsTriadAddonReady("Talk"))
+        {
+            SkipDialogue();
+        }
+
+        TrySkipTriadSelectYesno();
     }
 
-    private static bool IsTriadDialogueBlocking()
+    private static bool ShouldAutoSkipTriadDialogue()
     {
-        if (Svc.Condition[ConditionFlag.OccupiedInQuestEvent] ||
-            Svc.Condition[ConditionFlag.Occupied33] ||
-            Svc.Condition[ConditionFlag.OccupiedInEvent] ||
-            Svc.Condition[ConditionFlag.Occupied30] ||
-            Svc.Condition[ConditionFlag.Occupied38] ||
-            Svc.Condition[ConditionFlag.Occupied39] ||
-            Svc.Condition[ConditionFlag.OccupiedSummoningBell] ||
-            Svc.Condition[ConditionFlag.WatchingCutscene] ||
-            Svc.Condition[ConditionFlag.Mounting71] ||
-            Svc.Condition[ConditionFlag.CarryingObject])
+        if (TriadAutomater.IsAutomationFlowActive() || TriadAutomater.CardFarmSessionActive)
         {
             return true;
         }
 
         return IsTriadAddonReady("Talk") || IsTriadAddonReady("SelectYesno");
+    }
+
+    private static bool IsTriadDialogueBlocking()
+    {
+        if (IsTriadAddonReady("Talk") || IsTriadAddonReady("SelectYesno"))
+        {
+            return true;
+        }
+
+        if (!TriadAutomater.ModuleEnabled)
+        {
+            return false;
+        }
+
+        if (!TriadAutomater.IsAutomationFlowActive() &&
+            !TriadAutomater.CardFarmSessionActive &&
+            !TriadAutomater.IsCardFarmModeActive())
+        {
+            return false;
+        }
+
+        return HasTriadOccupiedCondition();
+    }
+
+    private static bool HasTriadOccupiedCondition()
+    {
+        return Svc.Condition[ConditionFlag.OccupiedInQuestEvent] ||
+               Svc.Condition[ConditionFlag.Occupied33] ||
+               Svc.Condition[ConditionFlag.OccupiedInEvent] ||
+               Svc.Condition[ConditionFlag.Occupied30] ||
+               Svc.Condition[ConditionFlag.Occupied38] ||
+               Svc.Condition[ConditionFlag.Occupied39] ||
+               Svc.Condition[ConditionFlag.WatchingCutscene] ||
+               Svc.Condition[ConditionFlag.Mounting71] ||
+               Svc.Condition[ConditionFlag.CarryingObject];
     }
 
     private static unsafe bool IsTriadAddonReady(string addonName)
@@ -515,20 +546,20 @@ public sealed class Saucy : IDalamudPlugin
         return addon->IsVisible && IsAddonReady(addon);
     }
 
-    private unsafe void TrySkipSelectYesno()
+    private unsafe void TrySkipTriadSelectYesno()
     {
         try
         {
-            if (!SelectYesnoHelper.TryGetVisible(out var _))
+            if (!SelectYesnoHelper.TryGetTriadPromptVisible(out var yesno))
             {
                 return;
             }
 
-            SelectYesnoHelper.PressYes();
+            SelectYesnoHelper.PressYes(yesno);
         }
         catch (Exception ex)
         {
-            Svc.Log.Verbose(ex, "[Saucy] TrySkipSelectYesno failed");
+            Svc.Log.Verbose(ex, "[Saucy] TrySkipTriadSelectYesno failed");
         }
     }
 

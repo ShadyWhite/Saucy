@@ -331,6 +331,11 @@ internal static unsafe class MultiAreaRouteExecutor
             return false;
         }
 
+        if (SelectYesnoHelper.IsBlockedSystemPrompt(yesno))
+        {
+            return false;
+        }
+
         if (!EzThrottler.Throttle("SaucyRouteYesno"))
         {
             return false;
@@ -471,12 +476,25 @@ internal static unsafe class MultiAreaRouteExecutor
 
     private static bool TickWaitForZone(RouteExecution execution)
     {
-        if (IsBetweenAreas() || !Player.Interactable || Lifestream.IsBusyNow())
+        if (!Player.Interactable || Lifestream.IsBusyNow())
         {
             return false;
         }
 
-        if (SelectYesnoHelper.TryGetVisible(out var yesno) && EzThrottler.Throttle("SaucyRouteYesno"))
+        if (execution.Route.IsInDestinationTerritory(
+            Svc.ClientState.TerritoryType, execution.Context.TargetTerritoryId))
+        {
+            return true;
+        }
+
+        if (IsBetweenAreas())
+        {
+            return false;
+        }
+
+        if (SelectYesnoHelper.TryGetVisible(out var yesno) &&
+            !SelectYesnoHelper.IsBlockedSystemPrompt(yesno) &&
+            EzThrottler.Throttle("SaucyRouteYesno"))
         {
             SelectYesnoHelper.PressYes(yesno);
             return false;
@@ -487,19 +505,13 @@ internal static unsafe class MultiAreaRouteExecutor
             return false;
         }
 
-        if (!execution.Route.IsInDestinationTerritory(
-            Svc.ClientState.TerritoryType, execution.Context.TargetTerritoryId))
+        if (DateTime.UtcNow - execution.StepStartedUtc > TimeSpan.FromSeconds(30))
         {
-            if (DateTime.UtcNow - execution.StepStartedUtc > TimeSpan.FromSeconds(30))
-            {
-                Svc.Chat.PrintError($"[Saucy] Did not arrive in {execution.Route.Name} after zone transition.");
-                execution.Failed = true;
-            }
-
-            return false;
+            Svc.Chat.PrintError($"[Saucy] Did not arrive in {execution.Route.Name} after zone transition.");
+            execution.Failed = true;
         }
 
-        return true;
+        return false;
     }
 
     private static bool TryMountUp()

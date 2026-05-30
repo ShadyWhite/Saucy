@@ -59,6 +59,36 @@ public static unsafe class SelectYesnoHelper
         return PressCallback(yesno, 1, static master => master.No());
     }
 
+    public static bool IsBlockedSystemPrompt(AddonSelectYesno* yesno)
+    {
+        var prompt = GetPromptText(yesno);
+        if (string.IsNullOrWhiteSpace(prompt))
+        {
+            return false;
+        }
+
+        return prompt.Contains("aetheryte", StringComparison.OrdinalIgnoreCase) ||
+               prompt.Contains("teleport", StringComparison.OrdinalIgnoreCase) ||
+               prompt.Contains("aethernet", StringComparison.OrdinalIgnoreCase) ||
+               prompt.Contains("summoning bell", StringComparison.OrdinalIgnoreCase);
+    }
+
+    public static bool TryGetTriadPromptVisible(out AddonSelectYesno* yesno)
+    {
+        if (!TryGetVisible(out yesno))
+        {
+            return false;
+        }
+
+        if (IsBlockedSystemPrompt(yesno))
+        {
+            yesno = null;
+            return false;
+        }
+
+        return true;
+    }
+
     public static bool TryPressArmedYes()
     {
         if (!IsArmed || !TryGetVisible(out var yesno))
@@ -84,6 +114,17 @@ public static unsafe class SelectYesnoHelper
         }
 
         return TryGetVisible(out resolved);
+    }
+
+    private static string GetPromptText(AddonSelectYesno* yesno)
+    {
+        var textNode = yesno->AtkUnitBase.GetTextNodeById(2);
+        if (textNode == null)
+        {
+            return string.Empty;
+        }
+
+        return textNode->NodeText.ToString();
     }
 
     private static bool PressCallback(AddonSelectYesno* yesno, int callbackId, Action<AddonMaster.SelectYesno> fallback)

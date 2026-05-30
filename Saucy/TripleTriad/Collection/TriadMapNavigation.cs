@@ -39,6 +39,8 @@ internal static class TriadMapNavigation
         Svc.GameGui.OpenMapWithMapLink(location);
     }
 
+    public static void CancelActiveNavigation() => ClearPending();
+
     public static void Tick()
     {
         var pending = _pending;
