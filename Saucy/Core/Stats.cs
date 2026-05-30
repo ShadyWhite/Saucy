@@ -3,6 +3,9 @@ namespace Saucy;
 
 public class Stats
 {
+    public int AirForceGamesPlayed = 0;
+
+    public int AirForceMGP = 0;
     public int CardsDroppedWithSaucy = 0;
 
     public Dictionary<uint, int> CardsWon = [];

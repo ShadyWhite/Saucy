@@ -458,7 +458,7 @@ internal static class TriadMapNavigation
         }
 
         var indoor = pending.ArrivedViaMultiAreaRoute || IsIndoorTerritory(Svc.ClientState.TerritoryType);
-        var pointOnFloor = Vnavmesh.TryGetPointOnFloor(pending.Destination, allowUnlandable: indoor)
+        var pointOnFloor = Vnavmesh.TryGetPointOnFloor(pending.Destination, indoor)
                            ?? pending.Destination;
 
         if (AttemptPathfind(pointOnFloor, pending.Fly))

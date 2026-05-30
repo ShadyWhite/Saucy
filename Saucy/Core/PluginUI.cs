@@ -8,6 +8,7 @@ using ECommons.ImGuiMethods;
 using FFXIVClientStructs.FFXIV.Client.Game;
 using FFXIVClientStructs.FFXIV.Client.Game.GoldSaucer;
 using PunishLib.ImGuiMethods;
+using Saucy.AirForce;
 using Saucy.CuffACur;
 using Saucy.OtherGames;
 using System;
@@ -273,6 +274,11 @@ public unsafe class PluginUI : Window
         if (ImGui.Checkbox("Enable##AirForce", ref enabled))
         {
             C.AirForceEnabled = enabled;
+            if (!enabled)
+            {
+                AirForceModule.ClearRewardTracking();
+            }
+
             C.Save();
         }
     }
@@ -338,7 +344,8 @@ public unsafe class PluginUI : Window
             status = "Idle";
         }
 
-        var sessionDelta = C.SessionStats.MGPWon + C.SessionStats.CuffMGP + C.SessionStats.LimbMGP;
+        var sessionDelta = C.SessionStats.MGPWon + C.SessionStats.CuffMGP + C.SessionStats.LimbMGP +
+                           C.SessionStats.AirForceMGP;
 
         return new()
         {
@@ -415,6 +422,7 @@ public unsafe class PluginUI : Window
         DrawStatsCard("Triple Triad", TriadHeadline(life), () => DrawTriadRows(life, sess));
         DrawStatsCard("Cuff-a-Cur", CuffHeadline(life), () => DrawCuffRows(life, sess));
         DrawStatsCard("Out on a Limb", LimbHeadline(life), () => DrawLimbRows(life, sess));
+        DrawStatsCard("Air Force One", AirForceHeadline(life), () => DrawAirForceRows(life, sess));
     }
 
     private static void DrawStatsToolbar()
@@ -464,6 +472,9 @@ public unsafe class PluginUI : Window
     private static string LimbHeadline(Stats s)
         => s.LimbGamesPlayed == 0 ? "no games played" : $"{s.LimbGamesPlayed:N0} games";
 
+    private static string AirForceHeadline(Stats s)
+        => s.AirForceGamesPlayed == 0 ? "no games played" : $"{s.AirForceGamesPlayed:N0} games";
+
     private static void DrawTriadRows(Stats life, Stats sess)
     {
         if (!BeginStatsTable("triad"))
@@ -471,13 +482,14 @@ public unsafe class PluginUI : Window
             return;
         }
         StatsHeader();
-        StatsRow("Games", life.GamesPlayedWithSaucy, sess.GamesPlayedWithSaucy);
+        StatsRow("Games", life.GamesPlayedWithSaucy, sess.GamesPlayedWithSaucy,
+            perHour: SessionCountPerHour(sess.GamesPlayedWithSaucy));
         StatsRow("Wins", life.GamesWonWithSaucy, sess.GamesWonWithSaucy);
         StatsRow("Losses", life.GamesLostWithSaucy, sess.GamesLostWithSaucy);
         StatsRow("Draws", life.GamesDrawnWithSaucy, sess.GamesDrawnWithSaucy);
         StatsRow("Cards won", life.CardsDroppedWithSaucy, sess.CardsDroppedWithSaucy);
         StatsRow("Card drop value", $"{GetDroppedCardValues(life):N0}", $"{GetDroppedCardValues(sess):N0}");
-        StatsRow("MGP won", $"{life.MGPWon:N0}", $"{sess.MGPWon:N0}", true, SessionMgpPerHour(sess.MGPWon));
+        StatsRow("MGP won", $"{life.MGPWon:N0}", $"{sess.MGPWon:N0}", true, perHour: SessionMgpPerHour(sess.MGPWon));
 
         (var lifeNpcCount, var lifeNpcName) = TopNpcCell(life);
         (var sessNpcCount, var sessNpcName) = TopNpcCell(sess);
@@ -497,11 +509,12 @@ public unsafe class PluginUI : Window
             return;
         }
         StatsHeader();
-        StatsRow("Games", life.CuffGamesPlayed, sess.CuffGamesPlayed);
+        StatsRow("Games", life.CuffGamesPlayed, sess.CuffGamesPlayed,
+            perHour: SessionCountPerHour(sess.CuffGamesPlayed));
         StatsRow("Bruisings", life.CuffBruisings, sess.CuffBruisings);
         StatsRow("Punishings", life.CuffPunishings, sess.CuffPunishings);
         StatsRow("Brutals", life.CuffBrutals, sess.CuffBrutals);
-        StatsRow("MGP won", $"{life.CuffMGP:N0}", $"{sess.CuffMGP:N0}", true, SessionMgpPerHour(sess.CuffMGP));
+        StatsRow("MGP won", $"{life.CuffMGP:N0}", $"{sess.CuffMGP:N0}", true, perHour: SessionMgpPerHour(sess.CuffMGP));
         ImGui.EndTable();
     }
 
@@ -512,8 +525,22 @@ public unsafe class PluginUI : Window
             return;
         }
         StatsHeader();
-        StatsRow("Games", life.LimbGamesPlayed, sess.LimbGamesPlayed);
-        StatsRow("MGP won", $"{life.LimbMGP:N0}", $"{sess.LimbMGP:N0}", true, SessionMgpPerHour(sess.LimbMGP));
+        StatsRow("Games", life.LimbGamesPlayed, sess.LimbGamesPlayed,
+            perHour: SessionCountPerHour(sess.LimbGamesPlayed));
+        StatsRow("MGP won", $"{life.LimbMGP:N0}", $"{sess.LimbMGP:N0}", true, perHour: SessionMgpPerHour(sess.LimbMGP));
+        ImGui.EndTable();
+    }
+
+    private static void DrawAirForceRows(Stats life, Stats sess)
+    {
+        if (!BeginStatsTable("airforce"))
+        {
+            return;
+        }
+        StatsHeader();
+        StatsRow("Games", life.AirForceGamesPlayed, sess.AirForceGamesPlayed,
+            perHour: SessionCountPerHour(sess.AirForceGamesPlayed));
+        StatsRow("MGP won", $"{life.AirForceMGP:N0}", $"{sess.AirForceMGP:N0}", true, perHour: SessionMgpPerHour(sess.AirForceMGP));
         ImGui.EndTable();
     }
 
@@ -586,7 +613,7 @@ public unsafe class PluginUI : Window
         }
 
         ImGui.TableNextColumn();
-        if (perHour != null)
+        if (!string.IsNullOrEmpty(perHour))
         {
             RightAlignCellText(perHour, col);
         }
@@ -594,28 +621,58 @@ public unsafe class PluginUI : Window
 
     private static void RightAlignCellText(string text, Vector4 color)
     {
-        const float cellRightMargin = 6f;
-        var avail = ImGui.GetContentRegionAvail().X;
-        var tw = ImGui.CalcTextSize(text).X;
-        var ind = avail - tw - cellRightMargin;
-        if (ind > 0)
+        if (string.IsNullOrEmpty(text))
         {
-            ImGui.SetCursorPosX(ImGui.GetCursorPosX() + ind);
+            return;
         }
+
+        var pad = ImGui.GetStyle().CellPadding;
+        var avail = ImGui.GetContentRegionAvail();
+        var tw = ImGui.CalcTextSize(text).X;
+        var offset = Math.Max(0f, avail.X - tw - pad.X);
+        if (offset > 0f)
+        {
+            ImGui.SetCursorPosX(ImGui.GetCursorPosX() + offset);
+        }
+
         ImGui.TextColored(color, text);
     }
 
     private static void DrawStatsCard(string name, string subtitle, Action body)
         => SaucyTheme.DrawCard(name, subtitle, body);
 
+    private static void EnsureSessionStartTime()
+    {
+        if (C.SessionStartTime == default || C.SessionStartTime.Year < 2020 || C.SessionStartTime > DateTime.UtcNow)
+        {
+            C.SessionStartTime = DateTime.UtcNow;
+        }
+    }
+
+    private static double GetSessionElapsedHours()
+    {
+        EnsureSessionStartTime();
+        return Math.Max((DateTime.UtcNow - C.SessionStartTime).TotalHours, 1.0 / 60.0);
+    }
+
     private static string SessionMgpPerHour(int sessionMgp)
     {
-        var hours = (DateTime.UtcNow - C.SessionStartTime).TotalHours;
-        if (hours < 0.001 || sessionMgp == 0)
+        if (sessionMgp <= 0)
         {
-            return "—";
+            return "-";
         }
-        return $"{(int)(sessionMgp / hours):N0}";
+
+        return $"{(int)Math.Round(sessionMgp / GetSessionElapsedHours()):N0}";
+    }
+
+    private static string SessionCountPerHour(int sessionCount)
+    {
+        if (sessionCount <= 0)
+        {
+            return "-";
+        }
+
+        return $"{(int)Math.Round(sessionCount / GetSessionElapsedHours()):N0}";
     }
 
     private static int GetDroppedCardValues(Stats stat)

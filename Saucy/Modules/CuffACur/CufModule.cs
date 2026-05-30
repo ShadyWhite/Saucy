@@ -1,7 +1,6 @@
 using Dalamud.Game.ClientState.Conditions;
 using Dalamud.Game.ClientState.Objects.Types;
 using Dalamud.Hooking;
-using ECommons;
 using ECommons.Throttlers;
 using FFXIVClientStructs.FFXIV.Client.Game.Control;
 using FFXIVClientStructs.FFXIV.Client.UI;
@@ -16,9 +15,8 @@ namespace Saucy.CuffACur;
 
 public unsafe class CufModule
 {
-    private const string StartMenuThrottleKey = "Saucy.CufModule.StartMenu";
-
     public delegate nint UnknownFunction(nint a1, ushort a2, int a3, void* a4);
+    private const string StartMenuThrottleKey = "Saucy.CufModule.StartMenu";
     public static bool ModuleEnabled;
     public static Hook<UnknownFunction>? FuncHook;
 
@@ -42,7 +40,7 @@ public unsafe class CufModule
                     IsAddonReady(&startMenu->AtkUnitBase) &&
                     IsCuffStartMenu(startMenu))
                 {
-                    if (EzThrottler.Throttle(StartMenuThrottleKey, 500))
+                    if (EzThrottler.Throttle(StartMenuThrottleKey))
                     {
                         startMenu->FireCallbackInt(0);
                     }

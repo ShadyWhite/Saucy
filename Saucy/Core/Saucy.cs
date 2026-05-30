@@ -90,6 +90,7 @@ public sealed class Saucy : IDalamudPlugin
         uiReaderGamesResults = new();
         uiReaderGamesResults.OnCuffUpdated += CheckCuffResults;
         uiReaderGamesResults.OnLimbUpdated += CheckLimbResults;
+        uiReaderGamesResults.OnAirForceUpdated += CheckAirForceResults;
 
         uiReaderScheduler = new(Svc.GameGui);
         uiReaderScheduler.AddObservedAddon(uiReaderGame);
@@ -156,6 +157,24 @@ public sealed class Saucy : IDalamudPlugin
             uiReaderGamesResults.SetIsResultsUI(false);
             C.Save();
         }
+    }
+
+    private void CheckAirForceResults(UIStateAirForceResults results)
+    {
+        if (!C.AirForceEnabled || !AirForceModule.ShouldTrackReward)
+        {
+            return;
+        }
+
+        C.UpdateStats(stats =>
+        {
+            stats.AirForceMGP += GetBonusMGP(results.numMGP);
+            stats.AirForceGamesPlayed++;
+        });
+
+        AirForceModule.ConsumeRewardTracking();
+        uiReaderGamesResults.SetIsResultsUI(false);
+        C.Save();
     }
 
     private void CheckCuffResults(UIStateCuffResults obj)
@@ -523,18 +542,16 @@ public sealed class Saucy : IDalamudPlugin
         return HasTriadOccupiedCondition();
     }
 
-    private static bool HasTriadOccupiedCondition()
-    {
-        return Svc.Condition[ConditionFlag.OccupiedInQuestEvent] ||
-               Svc.Condition[ConditionFlag.Occupied33] ||
-               Svc.Condition[ConditionFlag.OccupiedInEvent] ||
-               Svc.Condition[ConditionFlag.Occupied30] ||
-               Svc.Condition[ConditionFlag.Occupied38] ||
-               Svc.Condition[ConditionFlag.Occupied39] ||
-               Svc.Condition[ConditionFlag.WatchingCutscene] ||
-               Svc.Condition[ConditionFlag.Mounting71] ||
-               Svc.Condition[ConditionFlag.CarryingObject];
-    }
+    private static bool HasTriadOccupiedCondition() =>
+        Svc.Condition[ConditionFlag.OccupiedInQuestEvent] ||
+        Svc.Condition[ConditionFlag.Occupied33] ||
+        Svc.Condition[ConditionFlag.OccupiedInEvent] ||
+        Svc.Condition[ConditionFlag.Occupied30] ||
+        Svc.Condition[ConditionFlag.Occupied38] ||
+        Svc.Condition[ConditionFlag.Occupied39] ||
+        Svc.Condition[ConditionFlag.WatchingCutscene] ||
+        Svc.Condition[ConditionFlag.Mounting71] ||
+        Svc.Condition[ConditionFlag.CarryingObject];
 
     private static unsafe bool IsTriadAddonReady(string addonName)
     {

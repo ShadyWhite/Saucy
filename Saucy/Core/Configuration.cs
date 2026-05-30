@@ -85,6 +85,17 @@ public class Configuration : IPluginConfiguration
             changed = true;
         }
 
+        if (Version < 3)
+        {
+            if (SessionStartTime == default || SessionStartTime.Year < 2020)
+            {
+                SessionStartTime = DateTime.UtcNow;
+            }
+
+            Version = 3;
+            changed = true;
+        }
+
         if (changed)
         {
             Save();

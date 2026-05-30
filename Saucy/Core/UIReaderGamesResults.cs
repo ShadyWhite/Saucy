@@ -1,4 +1,5 @@
 using FFXIVClientStructs.FFXIV.Component.GUI;
+using Saucy.AirForce;
 using Saucy.CuffACur;
 using System;
 using System.Linq;
@@ -6,10 +7,12 @@ namespace Saucy;
 
 public class UIReaderGamesResults : IUIReader
 {
+    private UIStateAirForceResults airForceResults = new();
     private UIStateCuffResults cuffResults = new();
     private UIStateLimbResults limbResults = new();
 
     private bool needsNotify;
+    public Action<UIStateAirForceResults>? OnAirForceUpdated;
     public Action<UIStateCuffResults>? OnCuffUpdated;
     public Action<UIStateLimbResults>? OnLimbUpdated;
 
@@ -24,6 +27,7 @@ public class UIReaderGamesResults : IUIReader
         needsNotify = true;
         cuffResults = new();
         limbResults = new();
+        airForceResults = new();
     }
 
     public unsafe void OnAddonUpdate(nint addonPtr)
@@ -34,7 +38,7 @@ public class UIReaderGamesResults : IUIReader
             return;
         }
 
-        if (!CufModule.ModuleEnabled && !P.LimbManager.Cfg.EnableLimb)
+        if (!CufModule.ModuleEnabled && !P.LimbManager.Cfg.EnableLimb && !AirForceModule.ShouldTrackReward)
         {
             needsNotify = false;
             return;
@@ -53,6 +57,12 @@ public class UIReaderGamesResults : IUIReader
             needsNotify = false;
             OnLimbUpdated?.Invoke(limbResults);
         }
+
+        if (airForceResults.numMGP >= 0)
+        {
+            needsNotify = false;
+            OnAirForceUpdated?.Invoke(airForceResults);
+        }
     }
 
     public void SetIsResultsUI(bool value) => HasResultsUI = value;
@@ -69,6 +79,11 @@ public class UIReaderGamesResults : IUIReader
             if (P.LimbManager.Cfg.EnableLimb)
             {
                 limbResults.numMGP = -1;
+            }
+
+            if (AirForceModule.ShouldTrackReward)
+            {
+                airForceResults.numMGP = -1;
             }
 
             return;
@@ -97,6 +112,14 @@ public class UIReaderGamesResults : IUIReader
             if (!int.TryParse(number->NodeText.ToString().Where(char.IsDigit).ToArray(), out limbResults.numMGP))
             {
                 limbResults.numMGP = -1;
+            }
+        }
+
+        if (AirForceModule.ShouldTrackReward)
+        {
+            if (!int.TryParse(number->NodeText.ToString().Where(char.IsDigit).ToArray(), out airForceResults.numMGP))
+            {
+                airForceResults.numMGP = -1;
             }
         }
     }
@@ -171,6 +194,11 @@ public class UIStateCuffResults
 }
 
 public class UIStateLimbResults
+{
+    public int numMGP;
+}
+
+public class UIStateAirForceResults
 {
     public int numMGP;
 }

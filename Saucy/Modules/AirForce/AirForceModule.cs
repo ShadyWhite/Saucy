@@ -8,15 +8,44 @@ using ECommons.Throttlers;
 using ECommons.WindowsFormsReflector;
 using FFXIVClientStructs.FFXIV.Client.UI.Agent;
 using FFXIVClientStructs.FFXIV.Component.GUI;
+using System;
 using System.Linq;
+
 namespace Saucy.AirForce;
 
 public static unsafe class AirForceModule
 {
+    private static DateTime? rewardWindowUntilUtc;
+    private static bool wasInDuty;
+
+    public static bool ShouldTrackReward =>
+        rewardWindowUntilUtc != null && DateTime.UtcNow <= rewardWindowUntilUtc.Value;
+
+    public static void ClearRewardTracking()
+    {
+        rewardWindowUntilUtc = null;
+        wasInDuty = false;
+    }
+
+    public static void ConsumeRewardTracking() => rewardWindowUntilUtc = null;
+
     public static void OnUpdate()
     {
-        if (Svc.Condition[ConditionFlag.BoundByDuty95] && GenericHelpers.TryGetAddonByName<AtkUnitBase>("RideShooting", out var addon) && addon->IsReady())
+        if (!C.AirForceEnabled)
         {
+            ClearRewardTracking();
+            return;
+        }
+
+        var inDuty = Svc.Condition[ConditionFlag.BoundByDuty95] &&
+                     GenericHelpers.TryGetAddonByName<AtkUnitBase>("RideShooting", out var addon) &&
+                     addon->IsReady();
+
+        if (inDuty)
+        {
+            wasInDuty = true;
+            rewardWindowUntilUtc = null;
+
             foreach (var x in Svc.Objects.OfType<IEventObj>().Where(x => x.BaseId.EqualsAny<uint>(
                 2009678,
                 2009676,
@@ -35,6 +64,7 @@ public static unsafe class AirForceModule
                 {
                     continue;
                 }
+
                 if (Svc.GameGui.WorldToScreen(x.Position, out var screen))
                 {
                     if (EzThrottler.Throttle("Shoot", 250))
@@ -45,12 +75,20 @@ public static unsafe class AirForceModule
                         Svc.Framework.RunOnTick(() =>
                             {
                                 _ = WindowsKeypress.SendKeypress(Keys.Space);
-                            }
-                            , delayTicks: 1);
+                            },
+                            delayTicks: 1);
                         break;
                     }
                 }
             }
+
+            return;
+        }
+
+        if (wasInDuty)
+        {
+            wasInDuty = false;
+            rewardWindowUntilUtc = DateTime.UtcNow.AddMinutes(2);
         }
     }
 }
