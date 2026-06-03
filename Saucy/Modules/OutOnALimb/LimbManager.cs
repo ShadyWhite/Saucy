@@ -1,7 +1,9 @@
 ﻿using Dalamud.Bindings.ImGui;
 using Dalamud.Game;
+using Dalamud.Game.Agent;
 using Dalamud.Game.ClientState.Conditions;
 using Dalamud.Interface.Components;
+using Dalamud.Utility;
 using ECommons.Automation.UIInput;
 using ECommons.EzEventManager;
 using ECommons.GameHelpers;
@@ -11,6 +13,7 @@ using ECommons.UIHelpers.AddonMasterImplementations;
 using FFXIVClientStructs.FFXIV.Client.Game.Control;
 using FFXIVClientStructs.FFXIV.Client.Game.Object;
 using FFXIVClientStructs.FFXIV.Client.UI;
+using FFXIVClientStructs.FFXIV.Client.UI.Agent;
 using FFXIVClientStructs.FFXIV.Component.GUI;
 using Lumina.Excel.Sheets;
 using Saucy.Framework;
@@ -20,6 +23,9 @@ using System.Linq;
 using System.Numerics;
 using System.Text.RegularExpressions;
 using static ECommons.GenericHelpers;
+using static FFXIVClientStructs.FFXIV.Client.Graphics.Kernel.VertexShader;
+using static FFXIVClientStructs.FFXIV.Component.GUI.AtkModule;
+using AgentId = FFXIVClientStructs.FFXIV.Client.UI.Agent.AgentId;
 using ObjectKind = Dalamud.Game.ClientState.Objects.Enums.ObjectKind;
 
 namespace Saucy.OutOnALimb;
@@ -348,58 +354,59 @@ public unsafe class LimbManager
             var reader = new ReaderMiniGameBotanist(addon);
             if (TryGetAddonByName<AddonSelectYesno>("SelectYesno", out var ss) && IsAddonReady(&ss->AtkUnitBase))
             {
-                var text = ss->PromptText->NodeText.GetText();
-                var matches = new Regex(Svc.ClientState.ClientLanguage switch
+                if (RaptureAtkModule.Instance()->AddonCallbackMapping.TryGetValue(ss->Id, out var callbackEntry, false))
                 {
-                    ClientLanguage.English => @"Current payout: ([0-9]+)",
-                    ClientLanguage.French => @"Gain de PGS en cas de réussite : ([0-9]+)",
-                    ClientLanguage.German => @"Momentaner Gewinn: ([0-9]+)",
-                    ClientLanguage.Japanese => @"MGP.([0-9]+)",
-                    var _ => throw new ArgumentOutOfRangeException(nameof(Svc.ClientState.ClientLanguage))
-                }).Match(text);
-                if (matches.Success)
-                {
-                    var mgp = int.Parse(matches.Groups[1].Value);
-                    if (Exit)
+                    var agtMatch = AgentModule.Instance()->GetAgentByInternalId(AgentId.GoldSaucerMiniGame);
+                    bool isCorrectYesNo = agtMatch == callbackEntry.AgentInterface;
+                    var text = RaptureAtkModule.Instance()->AtkArrayDataHolder.StringArrays[25]->StringArray[165].ExtractText();
+                    var matches = Regex.Matches(text, @"\d+");
+
+                    if (isCorrectYesNo)
                     {
-                        if (EzThrottler.Throttle("Yesno", 2000))
+                        var mgp = int.Parse(matches[0].Value); //ToDo replace this with a more robust solution, probably from the agent
+                        Svc.Log.Debug($"MGP is {mgp}");
+
+                        if (Exit)
                         {
-                            SelectYesnoHelper.PressNo(ss);
-                        }
-                    }
-                    else
-                    {
-                        if (mgp >= 400)
-                        {
-                            if (reader.SecondsRemaining > Cfg.StopAt)
+                            if (EzThrottler.Throttle("Yesno", 2000))
                             {
-                                if (EzThrottler.Throttle("Yesno", 2000))
-                                {
-                                    SelectYesnoHelper.PressYes(ss);
-                                }
-                            }
-                            else
-                            {
-                                if (EzThrottler.Throttle("Yesno", 2000))
-                                {
-                                    SelectYesnoHelper.PressNo(ss);
-                                }
+                                SelectYesnoHelper.PressNo(ss);
                             }
                         }
                         else
                         {
-                            if (reader.SecondsRemaining > Cfg.HardStopAt)
+                            if (mgp >= 400)
                             {
-                                if (EzThrottler.Throttle("Yesno", 2000))
+                                if (reader.SecondsRemaining > Cfg.StopAt)
                                 {
-                                    SelectYesnoHelper.PressYes(ss);
+                                    if (EzThrottler.Throttle("Yesno", 2000))
+                                    {
+                                        SelectYesnoHelper.PressYes(ss);
+                                    }
+                                }
+                                else
+                                {
+                                    if (EzThrottler.Throttle("Yesno", 2000))
+                                    {
+                                        SelectYesnoHelper.PressNo(ss);
+                                    }
                                 }
                             }
                             else
                             {
-                                if (EzThrottler.Throttle("Yesno", 2000))
+                                if (reader.SecondsRemaining > Cfg.HardStopAt)
                                 {
-                                    SelectYesnoHelper.PressNo(ss);
+                                    if (EzThrottler.Throttle("Yesno", 2000))
+                                    {
+                                        SelectYesnoHelper.PressYes(ss);
+                                    }
+                                }
+                                else
+                                {
+                                    if (EzThrottler.Throttle("Yesno", 2000))
+                                    {
+                                        SelectYesnoHelper.PressNo(ss);
+                                    }
                                 }
                             }
                         }
